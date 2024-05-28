@@ -8,11 +8,15 @@ from __future__ import print_function
 from PhysicsTools.NanoAODTools.postprocessing.framework.eventloop import Module
 from PhysicsTools.NanoAODTools.postprocessing.framework.datamodel import Collection
 from PhysicsTools.HeppyCore.utils.deltar import deltaR
-from ROOT import LeptonSFHelper
+from ROOT import LeptonSFHelper, TMath
 
-from functools import cmp_to_key
 from ROOT import Mela, SimpleParticle_t, SimpleParticleCollection_t, TVar, TLorentzVector
 from ctypes import c_float
+
+from itertools import combinations
+
+import csv
+import numpy as np
 
 class StoreOption:
     # Define which SR candidates should be stored:
@@ -22,19 +26,110 @@ class StoreOption:
     # Note: For CRs the best candidate for each of the ZLL CRs that is activated with addSSCR, addOSCR, addSIPCR is stored. 
     BestCandOnly, AllCands, AllWithRelaxedMuId = range(0,3)
 
+class AngularVars:
+    def __init__(self, ZZ):
+        self.ZZ = ZZ
+        self.Z  = {"1": ZZ.Z1, "2": ZZ.Z2}
+
+    def _boost_to_cm(self, v1, v2):
+        """Returns v1 4-vector in the v2 rest frame."""
+        boosted_v1 = v1.Clone()
+        boosted_v1.Boost(-v2.BoostVector())
+        return boosted_v1
+
+    def cosTheta(self, z):
+        """Return cos(θ) where θ is defined
+        as the angle between the negatively
+        charged lepton in its parent Z's rest
+        frame and the Z in the four lepton rest
+        frame."""
+
+        Z = self.Z[z]
+
+        lep_p4_zRest = self._boost_to_cm(Z.l2DressedP4, Z.p4)
+        z_p4_m4lRest = self._boost_to_cm(Z.p4, self.ZZ.p4)
+
+        return TMath.Cos(lep_p4_zRest.Angle(z_p4_m4lRest.Vect()))
+
+    def cosThetaStar(self):
+        """Return cos(θ*) where θ* is defined
+        as the production angle of the Z1 in the four
+        lepton rest frame."""
+
+        z_p4_m4lRest = self._boost_to_cm(self.ZZ.Z1.p4, self.ZZ.p4)
+
+        return z_p4_m4lRest.CosTheta()
+
+    def delPhi(self, z):
+        # Verify this!!
+        """Return Δ(φ_12) where φ_12 is defined
+        as the azimuthal separation of the two
+        leptons from the Z defined in the four-lepton
+        rest frame."""
+
+        Z = self.Z[z]        
+
+        lep1_p4_m4lRest = self._boost_to_cm(Z.l1DressedP4, self.ZZ.p4)
+        lep2_p4_m4lRest = self._boost_to_cm(Z.l2DressedP4, self.ZZ.p4)
+
+        return lep1_p4_m4lRest.DeltaPhi(lep2_p4_m4lRest)
+
+class candProps:
+    def __init__(self, final_cands, region_filters):
+        self.final_cands    = final_cands
+
+        self.region_bools = {reg: [] for reg in region_filters}
+        
+        self.prop_names = ("mass", "pt", "eta", "phi", "massPreFSR", "Z1mass", "Z1pt", "Z1eta", "Z1phi", "Z1flav",
+                            "Z1pt", "Z1eta", "Z1phi", "Z2mass", "Z2flav", "Z1l1Idx", "Z1l2Idx", "Z2l1Idx", "Z2l2Idx")
+
+        self.props = dict(
+            mass         = lambda cand: cand.M,
+            pt           = lambda cand: cand.p4.Pt(),
+            eta          = lambda cand: cand.p4.Eta(),
+            phi          = lambda cand: cand.p4.Phi(),
+            cosTheta1    = lambda cand: cand.cosTheta1,
+            cosTheta3    = lambda cand: cand.cosTheta3,
+            massPreFSR   = lambda cand: cand.massPreFSR(),
+            Z1mass       = lambda cand: cand.Z1.M,
+            Z1pt         = lambda cand: cand.Z1.p4.Pt(),
+            Z1eta        = lambda cand: cand.Z1.p4.Eta(),
+            Z1phi        = lambda cand: cand.Z1.p4.Phi(),
+            Z1flav       = lambda cand: cand.Z1.finalState(),
+            Z2mass       = lambda cand: cand.Z2.M,
+            Z2pt         = lambda cand: cand.Z2.p4.Pt(),
+            Z2eta        = lambda cand: cand.Z2.p4.Eta(),
+            Z2phi        = lambda cand: cand.Z2.p4.Phi(),
+            Z2flav       = lambda cand: cand.Z2.finalState(),
+            Z1l1Idx      = lambda cand: cand.Z1.l1Idx,
+            Z1l2Idx      = lambda cand: cand.Z1.l2Idx,
+            Z2l1Idx      = lambda cand: cand.Z2.l1Idx,
+            Z2l2Idx      = lambda cand: cand.Z2.l2Idx
+        )
+
+        self.branches = {prop: [] for prop in self.props.keys()}
+
+        self._fill_props()
+
+        self.branches.update(self.region_bools)
+    
+    def _fill_props(self):
+        for passing_region, cand in self.final_cands.items():
+            self.region_bools[passing_region].append(True)
+            for reg in self.region_bools:
+                if reg==passing_region: continue
+                else: self.region_bools[reg].append(False)
+
+            for prop, prop_list in self.branches.items():
+                prop_list.append(self.props[prop](cand))
 
 class ZZFiller(Module):
 
     def __init__(self, runMELA, bestCandByMELA, isMC, year, processCR, data_tag, addZL=False, debug=False):
-        print("***ZZFiller: isMC:", isMC, "year:", year, "bestCandByMELA:", bestCandByMELA, flush=True)
+        print("***ZZFiller: isMC:", isMC, "year:", year, flush=True)
         self.writeHistFile = False
         self.isMC = isMC
         self.year = year
-        self.runMELA = runMELA or bestCandByMELA
-        if bestCandByMELA :
-            self.bestCandCmp = self.bestCandByDbkgKin
-        else:
-            self.bestCandCmp = self.bestCandByZ1Z2
 
         self.addSSCR = processCR
         self.addOSCR = processCR
@@ -44,10 +139,14 @@ class ZZFiller(Module):
         self.DATA_TAG = data_tag
 
         self.DEBUG = debug
-        self.ZmassValue = 91.1876;
+        self.ZmassValue = 91.1876
 
         self.candsToStore = StoreOption.BestCandOnly # Only store the best candidate for the SR
 
+        # DeltaR>0.02 cut among all leptons to protect against split tracks
+        self.passDeltaR = lambda l1, l2: deltaR(l1.eta, l1.phi, l2.eta, l2.phi) > 0.02
+
+        self.lepsExclusive = lambda z1, z2: z1.l1 != z2.l1 and z1.l1 != z2.l2 and z1.l2 != z2.l1 and z1.l2 != z2.l2
 
         # Pre-selection of leptons to build Z and LL candidates.
         # Normally it is the full ID + iso if only the SR is considered, or the relaxed ID if CRs are also filled,
@@ -90,16 +189,7 @@ class ZZFiller(Module):
         # Data-MC SFs. 
         # NanoAODTools provides a module based on LeptonEfficiencyCorrector.cc, but that does not seem to be flexible enough for us:
         # https://github.com/cms-nanoAOD/nanoAOD-tools/blob/master/python/postprocessing/modules/common/lepSFProducer.py
-        # UL16pre/postVFP and 2022pre/postEE have different SFs
-        self.lepSFHelper = LeptonSFHelper(self.DATA_TAG)
-
-        if self.runMELA :
-            sqrts=13.;
-            if year>=2022 :
-                sqrts=13.6
-            self.mela = Mela(sqrts, 125, TVar.ERROR)
-            self.mela.setCandidateDecayMode(TVar.CandidateDecay_ZZ)
-            print("", flush=True) # avoids MELA init messages to mix with job output 
+        self.lepSFHelper = LeptonSFHelper(self.DATA_TAG) # FIXME for 2016 UL samples: requires passing bool preVFP
 
         # Example of adding control histograms (requires self.writeHistFile = True)
         # def beginJob(self,histFile=None, histDirName=None):
@@ -108,86 +198,226 @@ class ZZFiller(Module):
         #    self.h_ZZMass = ROOT.TH1F('ZZMass','ZZMass',130,70,200)
         #    self.addObject(self.h_ZZMass)
 
-
     def endJob(self):
          print("", flush=True)
-
 
     def beginFile(self, inputFile, outputFile, inputTree, wrappedOutputTree):
         self.out = wrappedOutputTree
 
-        self.out.branch("nZCand", "I", title="Z candidates passing the full H4l selection")
-        self.out.branch("ZCand_mass", "F", lenVar="nZCand", title="mass")
-        self.out.branch("ZCand_pt", "F", lenVar="nZCand")
-        self.out.branch("ZCand_eta", "F", lenVar="nZCand")
-        self.out.branch("ZCand_rapidity", "F", lenVar="nZCand")
-        self.out.branch("ZCand_phi", "F", lenVar="nZCand")
-        self.out.branch("ZCand_flav", "F", lenVar="nZCand", title="Product of the pdgIds of the 2 daughters")
-        self.out.branch("ZCand_l1Idx", "S", lenVar="nZCand", title="index of 1st daughter in Electron+Muon merged collection")
-        self.out.branch("ZCand_l2Idx", "S", lenVar="nZCand", title="index of 2nd daughter in Electron+Muon merged collection")
-        self.out.branch("ZCand_fsr1Idx", "S", lenVar="nZCand", title="index of FSR associated to l1 (-1 if none)")
-        self.out.branch("ZCand_fsr2Idx", "S", lenVar="nZCand", title="index of FSR associated to l2 (-1 if none)") 
-        self.out.branch("bestZIdx", "S", title="Best Z in the event (mass closest to mZ)")
+        self.sign_reg  = ("OS", "SS")
+        self.mass_reg  = ("HighMass", "MidMass", "LowMass")
+        self.sip_reg   = ("PassSIP", "FailSIP", "NoSIP")
 
-        self.out.branch("nZZCand", "I", title="ZZ candidates passing the full H4l selection")
-        self.out.branch("ZZCand_mass", "F", lenVar="nZZCand", title="mass")
-        self.out.branch("ZZCand_pt", "F", lenVar="nZZCand")
-        self.out.branch("ZZCand_eta", "F", lenVar="nZZCand")
-        self.out.branch("ZZCand_rapidity", "F", lenVar="nZZCand")
-        self.out.branch("ZZCand_phi", "F", lenVar="nZZCand")
-        self.out.branch("ZZCand_massPreFSR", "F", lenVar="nZZCand", title="mass without FSR photons")
-        self.out.branch("ZZCand_Z1mass", "F", lenVar="nZZCand", title="Z1 mass")
-        self.out.branch("ZZCand_Z1flav", "I", lenVar="nZZCand", title="Product of the pdgIds of the 2 Z1 daughters")
-        self.out.branch("ZZCand_Z2mass", "F", lenVar="nZZCand", title="Z2 mass")
-        self.out.branch("ZZCand_Z2flav", "I", lenVar="nZZCand", title="Product of the pdgIds of the 2 Z2 daughters")
-        self.out.branch("ZZCand_KD", "F", lenVar="nZZCand", title="Kinematic discriminant for the choice of best candidate")
-        self.out.branch("ZZCand_Z2sumpt", "F", lenVar="nZZCand", title="sum of Z2 daughter pts (used in the choice of best candidate)")
-        # Note: lepton indices are numbered for leps=list(electrons)+list(muons) and run up to nlep=len(leps);
-        # no special ordering of l1, l2 is applied
-        self.out.branch("ZZCand_Z1l1Idx", "S", lenVar="nZZCand", title="Index of 1st Z1 daughter in the Electron+Muon merged collection")
-        self.out.branch("ZZCand_Z1l2Idx", "S", lenVar="nZZCand", title="Index of 2nd Z1 daughter in the Electron+Muon merged collection")
-        self.out.branch("ZZCand_Z2l1Idx", "S", lenVar="nZZCand", title="Index of 1st Z2 daughter in the Electron+Muon merged collection")
-        self.out.branch("ZZCand_Z2l2Idx", "S", lenVar="nZZCand", title="Index of 2nd Z2 daughter in the Electron+Muon merged collection")
-        for ID in self.muonIDs :
-            self.out.branch("ZZCand_mu"+ID["name"], "O", lenVar="nZZCand")
-        for var in self.muonIDVars :
-            self.out.branch("ZZCand_mu"+var["name"], "F", lenVar="nZZCand")
-        if self.isMC :
-            self.out.branch("ZZCand_dataMCWeight", "F", lenVar="nZZCand", title="data/MC efficiency correction weight")
-        self.out.branch("bestCandIdx", "S", title="Seleced ZZ candidate in the event")
+        self.props  = (("mass", "F"), ("pt", "F"), ("eta", "F"), ("phi", "F"), ("massPreFSR", "F"),
+                          ("Z1mass", "F"), ("Z1flav", "I"), ("Z2mass", "F"), ("Z2flav", "I"), ("KD", "F"),
+                          ("Z1l1Idx", "S"), ("Z1l2Idx", "S"), ("Z2l1Idx", "S"), ("Z2l2Idx", "S"))
+        
+        self.props = (("mass", "F"), ("pt", "F"), ("eta", "F"), ("phi", "F"), ("cosTheta1", "F"), ("cosTheta3", "F"), ("massPreFSR", "F"),
+                          ("Z1mass", "F"), ("Z1pt", "F"), ("Z1eta", "F"), ("Z1phi", "F"), ("Z1flav", "I"),
+                          ("Z2mass", "F"), ("Z2pt", "F"), ("Z2eta", "F"), ("Z2phi", "F"), ("Z2flav", "I"),
+                          ("KD", "F"), ("Z1l1Idx", "S"), ("Z1l2Idx", "S"), ("Z2l1Idx", "S"), ("Z2l2Idx", "S"))
 
+        self.out.branch("nZZCand", "I",  title="ZZ candidates passing the full selection")
+        self.out.branch("nZLLCand", "I", title="Z+LL control region candidates")
+        
+        self.out.branch("SR", "O", lenVar="nZZCand", title="Event candidate is in SR") # SR Filter Branch
+        for prop, typ in self.props:
+            sr_branch = "ZZCand_{}".format(prop)
+            cr_branch = "ZLLCand_{}".format(prop)
+            
+            self.out.branch(sr_branch, typ, lenVar="nZZCand")
+            self.out.branch(cr_branch, typ, lenVar="nZLLCand")
+            
+        if self.isMC:
+            self.out.branch("ZZCand_dataMCWeight", "F", lenVar="nZLLCand", title="data/MC efficiency correction weight")
 
-        if self.addSSCR or self. addOSCR or self.addSIPCR :
-            self.out.branch("nZLLCand", "I", title="Z+LL control region candidates")
-            self.out.branch("ZLLCand_mass", "F", lenVar="nZLLCand")
-            self.out.branch("ZLLCand_massPreFSR", "F", lenVar="nZLLCand")
-            self.out.branch("ZLLCand_pt", "F", lenVar="nZLLCand")
-            self.out.branch("ZLLCand_eta", "F", lenVar="nZLLCand")
-            self.out.branch("ZLLCand_rapidity", "F", lenVar="nZLLCand")
-            self.out.branch("ZLLCand_phi", "F", lenVar="nZLLCand")
-            self.out.branch("ZLLCand_Z1mass", "F", lenVar="nZLLCand")
-            self.out.branch("ZLLCand_Z1flav", "I", lenVar="nZLLCand")
-            self.out.branch("ZLLCand_Z2mass", "F", lenVar="nZLLCand")
-            self.out.branch("ZLLCand_Z2flav", "S", lenVar="nZLLCand")
-            self.out.branch("ZLLCand_Z1l1Idx", "S", lenVar="nZLLCand") 
-            self.out.branch("ZLLCand_Z1l2Idx", "S", lenVar="nZLLCand")
-            self.out.branch("ZLLCand_Z2l1Idx", "S", lenVar="nZLLCand")
-            self.out.branch("ZLLCand_Z2l2Idx", "S", lenVar="nZLLCand")
-            self.out.branch("ZLLCand_KD", "F", lenVar="nZLLCand")
-            self.out.branch("ZLLbestSSIdx", "S", title="best candidate for the SS CR")
-            self.out.branch("ZLLbest2P2FIdx", "S", title="best candidate for the 2P2F CR")
-            self.out.branch("ZLLbest3P1FIdx", "S", title="best candidate for the 3P1F CR")
-            self.out.branch("ZLLbestSIPCRIdx", "S", title="best candidate for the SIP CR")
+        # CR Filter branches
+        self.cr_regions = ["{}_{}_{}".format(sign, sip, mass) for sign in self.sign_reg for sip in self.sip_reg for mass in self.mass_reg]
+        for branch in self.cr_regions:
+            self.out.branch(branch, "O", lenVar="nZLLCand")
+        
+        self.filt_regions = ["SR"] + self.cr_regions
 
-        if self.addZLCR :            
-            self.out.branch("ZLCand_lepIdx", "S", title="Index of extra lep for the ZL CR")
+    def buildZs(self, lep_idx_pairs, lep_pairs, fsrPhotons, looseMass=(12.,120.), tightMass=10.):
+        """Builds Z candidates from pairs of leptons and their associated indices. Both leptons
+        must pass the preselection, be SF and pass a deltaR cut to be considered. Lepton pairs
+        which pass all of the above are used to instiate a ZCand object which constructs the Z
+        from the leptons and their associated FSR photons. For the object to be saved to the output
+        cands dictionary, it must pass the looseMass criteria and both of its leptons must pass
+        FullSelNoSIP. Z1 candidates are defined as those which are OS+PassSIP+OnShell."""
 
+        cands = dict(
+            Z1_Cands   = [],
+            OS_PassSIP = [], # Only difference from above is that the Z2 is off shell
+            OS_FailSIP = [],
+            OS_NoSIP   = [],
+            SS_PassSIP = [],
+            SS_FailSIP = [],
+            SS_NoSIP   = [],
+        )
+
+        for lep_idx, lep_pair in zip(lep_idx_pairs, lep_pairs):
+            l1, l2 = lep_pair
+            if self.leptonPresel(l1) and self.leptonPresel(l2):
+
+                if abs(l1.pdgId) == abs(l2.pdgId) and self.passDeltaR(l1, l2):
+                    # Set a default order for OS leptons in the Z candidate: 1=l+, 2=l-
+                    idx1, idx2 = lep_idx
+                    if (l1.pdgId*l2.pdgId<0 and l1.pdgId>0):
+                        idx1, idx2 = idx2, idx1
+                        l1, l2     = l2, l1
+                    
+                    aZ = self.ZCand(idx1, idx2, l1, l2, fsrPhotons, tightMass=tightMass)
+
+                    if aZ.PassSelNoSIP and (aZ.M>looseMass[0] and aZ.M<looseMass[1]):
+                        if aZ.Z1Cand:
+                            cands["Z1_Cands"].append(aZ)
+                        else:
+                            key = "OS" if aZ.OS else "SS"
+                            
+                            cands[key+"_NoSIP"].append(aZ)
+                            if aZ.PassSIP:
+                                cands[key+"_PassSIP"].append(aZ)
+                            else:
+                                cands[key+"_FailSIP"].append(aZ)
+                            
+                            #key += "_PassSIP" if aZ.PassSIP else "_FailSIP"
+                            #cands[key].append(aZ)
+        
+        return cands
+
+    def getSortedZPairs(self, z_cands, reg, z1=None):
+        """Accepts a dictionary Z_Cands which contains zed candidates for each
+        region, the region in question, and a Z1 candidate if sorting a CR. Returns
+        a list of tuples (Z1, Z2) sorted in two ways with Z1 defined as:
+        1) closest to Z1 mass if both candidates are possible Z1s (SR)
+        2) the passed value of z1. This should only be used in two cases:
+            a) there is only one Z1 candidate in the event.
+            b) all combinations of (Z1_a, Z1_b) failed to pass the SR criteria.
+        
+        The final returned list is sorted by closest Z1 (Z2) mass for the SR (CRs)."""
+        
+        cands = z_cands[reg]
+        which_z_idx = 0 if reg == "Z1_Cands" else 1
+        if reg == "Z1_Cands":
+            z_pairs = combinations(cands, 2)
+            # Define Z1 as closest mass to mZ, ex [(88, 90), (84, 91)] --> [(90, 88), (91, 84)]
+            z_pairs = [(zp[0], zp[1]) if abs(zp[0].M - self.ZmassValue) < abs(zp[1].M - self.ZmassValue) else (zp[1], zp[0]) for zp in z_pairs]
+        else:
+            z_pairs = [(z1, ll) for ll in cands]
+        
+        # Sort total list by Z1 mass if both Zs are Z1Cands, Z2 mass if only Z1 is a Z1Cand
+        return sorted(z_pairs, key = lambda x: abs(x[which_z_idx].M - self.ZmassValue))
+
+    def bestInSR(self, Z_Cands, sr_cands):
+        """Accepts a dictionary Z_Cands which contains zed candidates for each
+        region, and an empty list sr_cands. Loops through a sorted list of
+        (Za, Zb) pairs (both of which must pass Z1 criteria), appending the
+        first one that passes SR criteria."""
+        
+        sorted_pairs = self.getSortedZPairs(Z_Cands, "Z1_Cands")
+        for zz_pair in sorted_pairs:
+            zz = self.ZZCand_Base(*zz_pair)
+            if zz.SR:
+                sr_cands.append(zz)
+                break
+        
+        return sr_cands        
+
+    def bestInCR(self, Z_Cands, z1_cands, temp_zlls):
+        """Accepts a dictionary Z_Cands which contains zed candidates for each
+        region, a list of possible z1_cands (candidates that pass all
+        selections), and an empty dictionary.For each region and each z1 candidate,
+        constructs an ordered list of best Z_LL pairs, and saves the first pair that
+        passes the baseline selection to the dictionary."""
+
+        ll_regions = list(Z_Cands.keys())
+        ll_regions.remove("Z1_Cands")
+        for region in ll_regions:
+            
+            if len(Z_Cands[region]) < 1: continue
+            
+            for z1 in z1_cands:
+                sorted_pairs = self.getSortedZPairs(Z_Cands, region, z1)
+                for zz_pair in sorted_pairs:
+                    zz = self.ZZCand_Base(*zz_pair)
+                    if zz.passBaseline:
+                        if zz.HighMass:
+                            if zz.Z2OnShell : temp_zlls[region+"_HighMass"] = zz
+                            else: continue
+                        elif zz.MidMass: temp_zlls[region+"_MidMass"] = zz
+                        elif zz.LowMass: temp_zlls[region+"_LowMass"] = zz
+                        break
+                        
+        return temp_zlls
+
+    def bestZLLs(self, temp_zlls, final_cands):
+        """Takes a dictionary of temporary ZLL candidates (temp_zlls)
+        containing the best candidate for each CR. CRs for which no candidate
+        passes the baseline selection should not be in temp_zlls.
+
+        For each pair of regions, check if candidate leptons overlap:
+        --> Overlap:    choose best cand by Z2 mass.
+        --> No overlap: keep both candidates.
+        """
+
+        # Candidate leptons for each region
+        lep_lists = {reg: temp_zlls[reg].leps() for reg in temp_zlls}
+        # Pairs of regions
+        reg_pairs = combinations(lep_lists.keys(), 2)
+        
+        for reg_pair in reg_pairs:
+            reg_1, reg_2 = reg_pair
+            
+            # NoSIP region _does_ overlap with other regions
+            if ("NoSIP" in reg_1) or ("NoSIP" in reg_2):
+                final_cands[reg_1] = temp_zlls[reg_1]
+                final_cands[reg_2] = temp_zlls[reg_2]
+                continue
+
+            cand_1_leps, cand_2_leps = lep_lists[reg_1], lep_lists[reg_2]
+            
+            leps_overlap = bool(set(cand_1_leps) & set(cand_2_leps))
+
+            if leps_overlap:
+                cand_1_z2, cand_2_z2 = temp_zlls[reg_1].Z2, temp_zlls[reg_2].Z2
+                
+                if abs(cand_1_z2.M - self.ZmassValue) < abs(cand_2_z2.M - self.ZmassValue):
+                    final_cands[reg_1] = temp_zlls[reg_1]
+                else:
+                    final_cands[reg_2] = temp_zlls[reg_2]
+            
+            else:
+                final_cands[reg_1] = temp_zlls[reg_1]
+                final_cands[reg_2] = temp_zlls[reg_2]
+        
+        return final_cands
+
+    def write_branches(self, final_cands):
+        
+        cand_props = candProps(final_cands, self.filt_regions)
+
+        if cand_props.branches["SR"][0]:
+
+            prep     = "ZZCand_"
+            if self.isMC:
+                mcWeight = [self.getDataMCWeight(final_cands["SR"].leps())]
+                self.out.fillBranch("ZZCand_dataMCWeight", mcWeight)
+        else:
+            prep = "ZLLCand_"
+        
+        prep = "ZZCand_" if cand_props.branches["SR"][0] else "ZLLCand_"
+        
+        for branch, vals in cand_props.branches.items():
+            if not (branch == "SR" or "OS" in branch or "SS" in branch):
+                branch = prep + branch
+            self.out.fillBranch(branch, vals)
 
     def analyze(self, event):
         """process event, return True (go to next module) or False (fail, go to next event)"""
 
         if self.DEBUG : print ('Event {}:{}:{}'.format(event.run,event.luminosityBlock,event.event))
- 
+
         # Collections
         electrons = Collection(event, "Electron")
         muons = Collection(event, "Muon")
@@ -198,346 +428,71 @@ class ZZFiller(Module):
         ### Skip events with too few leptons (min 3 if ZL is included, 4 otherwise) 
         if nlep < 3 or (not self.addZLCR and nlep < 4) : 
             return False
+
+        lep_idxs      = [*range(0,nlep,1)]
+
+        lep_idx_pairs = combinations(lep_idxs, 2)
+        lep_pairs     = combinations(leps, 2)
+
+        # {Z1_cands: [...], OS_PassSIP = [...], OS_FailSIP = [...], SS_PassSIP = [...], SS_FailSIP = [...]}
+        Z_Cands = self.buildZs(lep_idx_pairs, lep_pairs, fsrPhotons)
+        z1_cands = Z_Cands["Z1_Cands"]
         
-        Zs = [] # all Z cands, used to build SR and CRs
-        SRZs = [] # Selected Zs, to be written out
-        bestZIdx = -1 # index of the best Z in the event, among SRZs
-        ZZs = []
-        bestCandIdx = -1
-        ZLLs = [] 
-        ZLLsTemp = []
-        best3P1FCRIdx = -1
-        best2P2FCRIdx = -1
-        bestSSCRIdx = -1
-        bestSIPCRIdx = -1
-        ZLCand_lIdx = -1 #index of the additional lepton for the Z+L CR
-
-        ### Z combinatorial over selected leps (after FSR-corrected ISO cut for muons)
-        for i,l1 in enumerate(leps):
-            if self.leptonPresel(l1) :
-                for j in range(i+1,nlep):
-                    l2 = leps[j]
-                    nPassLep = 0
-                    isOSSF = False
-                    isSR   = False
-                    is1FCR = False
-                    is2FCR = False
-                    isSSCR = False
-                    isSIPCR = False
-                    if self.leptonPresel(l2):
-                        if l1.pdgId == -l2.pdgId : #OS,SF: candidate for signal region 
-                            isOSSF = True
-                            if l1.ZZRelaxedId and l2.ZZRelaxedId:
-                                nPassLep = int(l1.ZZFullSel) + int(l2.ZZFullSel) # 0,1,2 leptons passing full sel
-                                if nPassLep == 2 : isSR = True # SR (to be used to set the best candidate)
-                                if self.addOSCR :
-                                    if nPassLep == 0 : is2FCR = True
-                                    elif nPassLep == 1 : is1FCR = True
-                        elif l1.pdgId == l2.pdgId : # SS control regions
-                            if self.addSSCR and l1.ZZRelaxedId and l2.ZZRelaxedId : isSSCR = True
-                            if self.addSIPCR and l1.ZZFullSelNoSIP and l2.ZZFullSelNoSIP : isSIPCR = True
-                            if not (isSSCR or isSIPCR) : continue
-                        else:
-                            continue
-                        
-                        # Set a default order for OS leptons in the Z candidate: 1=l+, 2=l-
-                        idx1, idx2 = i, j
-                        if (l1.pdgId*l2.pdgId<0 and l1.pdgId>0) :
-                            idx1, idx2 = idx2, idx1
-                        
-                        aZ = self.ZCand(idx1, idx2, leps, fsrPhotons)
-                        aZ.isOSSF = isOSSF
-                        aZ.isSR   = isSR
-                        aZ.is1FCR = is1FCR
-                        aZ.is2FCR = is2FCR
-                        aZ.isSSCR = isSSCR
-                        aZ.isSIPCR = isSIPCR
-                        
-                        zmass = aZ.M
-                        if self.DEBUG: print('Z={:.4g} pt1={:.3g} pt2={:.3g} fsr1={} fsr2={} SR={} 1F={} 2F={} SS={} SSSIP={}'.format(zmass, l1.pt, l2.pt, l1.fsrPhotonIdx,  l2.fsrPhotonIdx, isSR, is1FCR, is2FCR, isSSCR, isSIPCR))
-                        if (zmass>12. and zmass<120.):
-                            Zs.append(aZ)
-                            if aZ.isSR : # those that will be written in the event
-                                if (bestZIdx<0 or abs(zmass-self.ZmassValue)<abs(SRZs[bestZIdx].M-self.ZmassValue)) :
-                                    bestZIdx = len(SRZs)
-                                SRZs.append(aZ)
-                                
-
-        ### Build ZZ and ZLL combinations passing the ZZ selection
-        if len(Zs) >= 2:
-            ### Signal region
-            for iZ,aZ in enumerate(Zs):
-                for jZ in range(iZ+1, len(Zs)):                    
-                    if Zs[iZ].isOSSF and Zs[jZ].isOSSF : # 2 OSSSF Zs
-                        ZZ = self.makeCand(Zs[iZ],Zs[jZ])
-                        if ZZ == None: continue
-                        ZZs.append(ZZ)
-
-                        if self.DEBUG : print("ZZ:", len(ZZs)-1, ZZ.p4.M(), ZZ.Z1.M, ZZ.Z2.M, ZZ.Z2.sumpt(), ZZ.finalState(), ZZ.p_GG_SIG_ghg2_1_ghz1_1_JHUGen, ZZ.p_QQB_BKG_MCFM, ZZ.KD, (ZZ.Z1.isSR and ZZ.Z2.isSR))
-
-                        #Search for the the best cand in the SR (ie among those passing full ID cuts)
-                        if ZZ.Z1.isSR and ZZ.Z2.isSR :
-                            if bestCandIdx<0 or self.bestCandCmp(ZZ,ZZs[bestCandIdx]) < 0: bestCandIdx = len(ZZs)-1
-
-            if self.DEBUG : print("bestCand:", bestCandIdx)
-
-
-            ### ZLL combinations for control regions, made of 1 good Z + 1 ll pair;
-            ### these are considered only if no SR candidate is present in the event
-            if bestCandIdx < 0 and (self.addSSCR or self. addOSCR or self.addSIPCR) :
-                for iZ1,Z1 in enumerate(Zs):
-                    if Z1.isSR : 
-                        for iZ2,Z2 in enumerate(Zs):
-                            if Z2.is1FCR or Z2.is2FCR or Z2.isSSCR or Z2.isSIPCR :
-                                ZLL = self.makeCand(Z1, Z2, sortZsByMass=False, fillIDVars=False)
-                                if ZLL == None: continue
-                                if ZLL.Z2.is2FCR  and (best2P2FCRIdx<0 or self.bestCandCmp(ZLL,ZLLsTemp[best2P2FCRIdx]) < 0) : best2P2FCRIdx = len(ZLLsTemp)
-                                if ZLL.Z2.is1FCR  and (best3P1FCRIdx<0 or self.bestCandCmp(ZLL,ZLLsTemp[best3P1FCRIdx]) < 0) : best3P1FCRIdx = len(ZLLsTemp)
-                                if ZLL.Z2.isSSCR  and (bestSSCRIdx<0 or self.bestCandCmp(ZLL,ZLLsTemp[bestSSCRIdx]) < 0) : bestSSCRIdx = len(ZLLsTemp)
-                                if ZLL.Z2.isSIPCR and (bestSIPCRIdx<0 or self.bestCandCmp(ZLL,ZLLsTemp[bestSIPCRIdx]) < 0) : bestSIPCRIdx = len(ZLLsTemp)
-                                ZLLsTemp.append(ZLL)
-                                
-                # Check that only one candidate is selected in each event for the 2 CRs of the OS method?
-                # Actually not needed, at the overlap is accounted for in the method
-#                if best2P2FCRIdx >= 0 and best3P1FCRIdx >= 0 :
-#                    print ('WARNING: event {}:{}:{} has CR candidates in both 2P2F and 3P1F regions'.format(event.run,event.luminosityBlock,event.event))   #FIXME choose the best among the two
-
-                # Store only ZLL candidates that belong to at least 1 CR
-                for iZLL, ZLL in enumerate(ZLLsTemp) :
-                    select = False
-                    if iZLL == best2P2FCRIdx :
-                        best2P2FCRIdx = len(ZLLs)
-                        select = True
-                    if iZLL == best3P1FCRIdx :
-                        best3P1FCRIdx = len(ZLLs)
-                        select = True
-                    if iZLL == bestSSCRIdx :
-                        bestSSCRIdx = len(ZLLs)
-                        select = True
-                    if iZLL == bestSIPCRIdx :
-                        bestSIPCRIdx = len(ZLLs)
-                        select = True
-                    if select : ZLLs.append(ZLL)
-                    if self.DEBUG: print("ZLL:", iZLL, ZLL.p4.M(), ZLL.Z1.M, ZLL.Z2.M, ZLL.Z2.sumpt(), ZLL.finalState(), ZLL.p_GG_SIG_ghg2_1_ghz1_1_JHUGen, ZLL.p_QQB_BKG_MCFM, ZLL.KD,
-                                         "2P2F:", int(iZLL==best2P2FCRIdx), "3P1F:", int(iZLL==best3P1FCRIdx), "SS:", int(iZLL == bestSSCRIdx), "SIP:", int(iZLL == bestSIPCRIdx))
-                    
-            if self.candsToStore == StoreOption.BestCandOnly : # keep only the best cand as single element of the ZZ collection
-                if bestCandIdx >= 0 :
-                    ZZs = [ZZs[bestCandIdx]]
-                    bestCandIdx = 0
-                else :
-                    ZZs = []
-
-        ### Z+L CR, for fake rate. This is considered only for events with a Z + exactly 1 additional lepton passing the relaxed selection.
-        ### This ensures that there is no overlap with the SR and OS, 3P1F and 2P2F CRs (there can be an overlap with the SIP CR
-        ### as that keeps leptons failing SIP)
-        if self.addZLCR and bestZIdx >= 0 and SRZs[bestZIdx].M > 40 and SRZs[bestZIdx].M < 120:
-            aZ = SRZs[bestZIdx]
-            for i,aL in enumerate(leps):
-                # Search for additional lepton, with ghost suppression DR cut
-                if i != aZ.l1Idx and i!= aZ.l2Idx and aL.ZZRelaxedId and \
-                   deltaR(aL.eta, aL.phi, aZ.l1.eta, aZ.l1.phi) > 0.02 and \
-                   deltaR(aL.eta, aL.phi, aZ.l2.eta, aZ.l2.phi) > 0.02 :
-                    if ZLCand_lIdx < 0 :
-                        ZLCand_lIdx = i
-                    else : # more than 1 additional lepton, drop the CR
-                        ZLCand_lIdx = -1
-                        break
-            if ZLCand_lIdx >= 0 :
-                aL = leps[ZLCand_lIdx]
-                #Apply QCD suppression cut (mLL>4 cut on all OS pairs) 
-                if (aL.charge != aZ.l1.charge and (aL.p4()+aZ.l1.p4()).M() <= 4) or \
-                   (aL.charge != aZ.l2.charge and (aL.p4()+aZ.l2.p4()).M() <= 4) :
-                    ZLCand_lIdx = -1
-                        
-        ### Skip events with no candidates
-        if len(ZZs) == 0 and len(ZLLs) == 0 and ZLCand_lIdx < 0: return False
-
-        ### Now fill the variables to be stored as output
-        # Fill selected Zs
-        ZCand_mass = [0.]*len(SRZs)
-        ZCand_pt = [0.]*len(SRZs)
-        ZCand_eta = [0.]*len(SRZs)
-        ZCand_rapidity = [0.]*len(SRZs)
-        ZCand_phi = [0.]*len(SRZs)
-        ZCand_flav = [0.]*len(SRZs)
-        ZCand_l1Idx = [-1]*len(SRZs)
-        ZCand_l2Idx = [-1]*len(SRZs)
-        ZCand_fsr1Idx = [-1]*len(SRZs)
-        ZCand_fsr2Idx = [-1]*len(SRZs)
-
-        for iZ, aZ in enumerate(SRZs) :
-            ZCand_mass[iZ] = aZ.p4.M()
-            ZCand_pt[iZ] = aZ.p4.Pt()
-            ZCand_eta[iZ] = aZ.p4.Eta()
-            ZCand_rapidity[iZ] = aZ.p4.Rapidity()
-            ZCand_phi[iZ] = aZ.p4.Phi()
-            ZCand_flav[iZ] = aZ.finalState()
-            ZCand_l1Idx[iZ] = aZ.l1Idx
-            ZCand_l2Idx[iZ] = aZ.l2Idx
-            ZCand_fsr1Idx[iZ] = aZ.fsr1Idx
-            ZCand_fsr2Idx[iZ] = aZ.fsr2Idx
-
-        self.out.fillBranch("ZCand_mass", ZCand_mass)
-        self.out.fillBranch("ZCand_pt", ZCand_pt)
-        self.out.fillBranch("ZCand_eta", ZCand_eta)
-        self.out.fillBranch("ZCand_rapidity", ZCand_rapidity)
-        self.out.fillBranch("ZCand_phi", ZCand_phi)
-        self.out.fillBranch("ZCand_flav", ZCand_flav)
-        self.out.fillBranch("ZCand_l1Idx", ZCand_l1Idx)
-        self.out.fillBranch("ZCand_l2Idx", ZCand_l2Idx)
-        self.out.fillBranch("ZCand_fsr1Idx", ZCand_fsr1Idx)
-        self.out.fillBranch("ZCand_fsr2Idx", ZCand_fsr2Idx)
-        self.out.fillBranch("bestZIdx", bestZIdx)
-
-        ### Fill ZZ candidates
-        ZZCand_mass = [0.]*len(ZZs)
-        ZZCand_massPreFSR = [0.]*len(ZZs)
-        ZZCand_pt = [0.]*len(ZZs)
-        ZZCand_eta = [0.]*len(ZZs)
-        ZZCand_rapidity = [0.]*len(ZZs)
-        ZZCand_phi = [0.]*len(ZZs)
-        ZZCand_Z1mass = [0.]*len(ZZs)
-        ZZCand_Z1flav = [0.]*len(ZZs)
-        ZZCand_Z2mass = [0.]*len(ZZs)
-        ZZCand_Z2flav = [0.]*len(ZZs)
-        ZZCand_Z1l1Idx = [-1]*len(ZZs)
-        ZZCand_Z1l2Idx = [-1]*len(ZZs)
-        ZZCand_Z2l1Idx = [-1]*len(ZZs)
-        ZZCand_Z2l2Idx = [-1]*len(ZZs)
-        ZZCand_KD = [0.]*len(ZZs)
-        ZZCand_Z2sumpt = [0.]*len(ZZs)
-        ZZCand_wDataMC = [0.]*len(ZZs)
-        ZZCand_passID    = [[] for il in range(len(self.muonIDs))]
-        ZZCand_worstVar  = [[] for il in range(len(self.muonIDVars))]
+        temp_zlls = {} # Save best ZLL candidate in each region separately
+        sr_cands = []
         
-        for iZZ, ZZ in enumerate(ZZs) :
-            ZZCand_mass[iZZ] = ZZ.p4.M()
-            ZZCand_massPreFSR[iZZ] = ZZ.massPreFSR()
-            ZZCand_pt[iZZ] = ZZ.p4.Pt()
-            ZZCand_eta[iZZ] = ZZ.p4.Eta()
-            ZZCand_rapidity[iZZ] = ZZ.p4.Rapidity()
-            ZZCand_phi[iZZ] = ZZ.p4.Phi()
-            ZZCand_Z1mass[iZZ] = ZZ.Z1.M
-            ZZCand_Z1flav[iZZ] = ZZ.Z1.finalState()
-            ZZCand_Z2mass[iZZ] = ZZ.Z2.M
-            ZZCand_Z2flav[iZZ] = ZZ.Z2.finalState()
-            ZZCand_Z1l1Idx[iZZ] = ZZ.Z1.l1Idx
-            ZZCand_Z1l2Idx[iZZ] = ZZ.Z1.l2Idx
-            ZZCand_Z2l1Idx[iZZ] = ZZ.Z2.l1Idx
-            ZZCand_Z2l2Idx[iZZ] = ZZ.Z2.l2Idx
-            ZZCand_KD[iZZ] = ZZ.KD
-            ZZCand_Z2sumpt[iZZ] = ZZ.Z2.sumpt()
-            if self.year < 2023 : #FIXME
-                if self.isMC: ZZCand_wDataMC[iZZ] =  self.getDataMCWeight(ZZ.leps())
-            else :
-                ZZCand_wDataMC[iZZ] = 1.
-            for iID, ID in enumerate(self.muonIDs) :
-                ZZCand_passID[iID].append(ZZ.passId[iID])
-            for iVar, var in enumerate(self.muonIDVars) :
-                ZZCand_worstVar[iVar].append(ZZ.worstVar[iVar])
 
-        self.out.fillBranch("ZZCand_mass", ZZCand_mass)
-        self.out.fillBranch("ZZCand_massPreFSR", ZZCand_massPreFSR)
-        self.out.fillBranch("ZZCand_pt", ZZCand_pt)
-        self.out.fillBranch("ZZCand_eta", ZZCand_eta)
-        self.out.fillBranch("ZZCand_rapidity", ZZCand_rapidity)
-        self.out.fillBranch("ZZCand_phi", ZZCand_phi)
-        self.out.fillBranch("ZZCand_Z1mass", ZZCand_Z1mass)
-        self.out.fillBranch("ZZCand_Z1flav", ZZCand_Z1flav)
-        self.out.fillBranch("ZZCand_Z2mass", ZZCand_Z2mass)
-        self.out.fillBranch("ZZCand_Z2flav", ZZCand_Z2flav)
-        self.out.fillBranch("ZZCand_KD", ZZCand_KD)
-        self.out.fillBranch("ZZCand_Z2sumpt", ZZCand_Z2sumpt)
-        self.out.fillBranch("ZZCand_Z1l1Idx", ZZCand_Z1l1Idx)
-        self.out.fillBranch("ZZCand_Z1l2Idx", ZZCand_Z1l2Idx)
-        self.out.fillBranch("ZZCand_Z2l1Idx", ZZCand_Z2l1Idx)
-        self.out.fillBranch("ZZCand_Z2l2Idx", ZZCand_Z2l2Idx)
-        for iID, ID in enumerate(self.muonIDs) :
-            self.out.fillBranch("ZZCand_mu"+ID["name"], ZZCand_passID[iID])
-        for iVar, var in enumerate(self.muonIDVars) :
-            self.out.fillBranch("ZZCand_mu"+var["name"], ZZCand_worstVar[iVar])
+        # More than one Z1_Cands --> Possible SR
+        if len(z1_cands) > 1:
 
-        if self.isMC:
-            self.out.fillBranch("ZZCand_dataMCWeight", ZZCand_wDataMC)
+            sr_cands = self.bestInSR(Z_Cands, sr_cands)
 
-        self.out.fillBranch("bestCandIdx", bestCandIdx)
+            # >= 2 Z1 Cands but no ZZ Cand passing SR criteria --> check for CRs
+            if len(sr_cands) == 0:
+                temp_zlls = self.bestInCR(Z_Cands, z1_cands, temp_zlls)
 
 
-        if self.addSSCR or self. addOSCR or self.addSIPCR :
-            ZLLCand_mass   = [0.]*len(ZLLs)
-            ZLLCand_massPreFSR = [0.]*len(ZLLs)
-            ZLLCand_pt     = [0.]*len(ZLLs)
-            ZLLCand_eta    = [0.]*len(ZLLs)
-            ZLLCand_rapidity = [0.]*len(ZLLs)
-            ZLLCand_phi    = [0.]*len(ZLLs)
-            ZLLCand_Z1mass = [0.]*len(ZLLs)
-            ZLLCand_Z1flav = [0.]*len(ZLLs)
-            ZLLCand_Z2mass = [0.]*len(ZLLs)
-            ZLLCand_Z2flav = [0.]*len(ZLLs)
-            ZLLCand_Z1l1Idx = [-1]*len(ZLLs)
-            ZLLCand_Z1l2Idx = [-1]*len(ZLLs)
-            ZLLCand_Z2l1Idx = [-1]*len(ZLLs)
-            ZLLCand_Z2l2Idx = [-1]*len(ZLLs)
-            ZLLCand_KD     = [0.]*len(ZLLs)
+        elif len(z1_cands) == 1:
+            
+            if sum([len(Z_Cands[reg]) for reg in Z_Cands.keys()]) < 2:
+                return False
+            else:
+                temp_zlls = self.bestInCR(Z_Cands, z1_cands, temp_zlls)
+        
+        else:
+            return False
+        
 
-            for iZLL, ZLL in enumerate(ZLLs) :
-                ZLLCand_mass[iZLL] = ZLL.p4.M()
-                ZLLCand_massPreFSR[iZLL] = ZLL.massPreFSR()
-                ZLLCand_pt[iZLL] = ZLL.p4.Pt()
-                ZLLCand_eta[iZLL] = ZLL.p4.Eta()
-                ZLLCand_rapidity[iZLL] = ZLL.p4.Rapidity()
-                ZLLCand_phi[iZLL] = ZLL.p4.Phi()
-                ZLLCand_Z1mass[iZLL] = ZLL.Z1.M
-                ZLLCand_Z1flav[iZLL] = ZLL.Z1.finalState()
-                ZLLCand_Z2mass[iZLL] = ZLL.Z2.M
-                ZLLCand_Z2flav[iZLL] = ZLL.Z2.finalState()
-                ZLLCand_Z1l1Idx[iZLL] = ZLL.Z1.l1Idx
-                ZLLCand_Z1l2Idx[iZLL] = ZLL.Z1.l2Idx
-                ZLLCand_Z2l1Idx[iZLL] = ZLL.Z2.l1Idx
-                ZLLCand_Z2l2Idx[iZLL] = ZLL.Z2.l2Idx
-                ZLLCand_KD[iZLL] = ZLL.KD
 
-            self.out.fillBranch("ZLLCand_mass",   ZLLCand_mass)
-            self.out.fillBranch("ZLLCand_massPreFSR",   ZLLCand_massPreFSR)
-            self.out.fillBranch("ZLLCand_pt",     ZLLCand_pt)
-            self.out.fillBranch("ZLLCand_eta",    ZLLCand_eta)
-            self.out.fillBranch("ZLLCand_rapidity",    ZLLCand_rapidity)
-            self.out.fillBranch("ZLLCand_phi",    ZLLCand_phi)
-            self.out.fillBranch("ZLLCand_Z1mass", ZLLCand_Z1mass)
-            self.out.fillBranch("ZLLCand_Z1flav", ZLLCand_Z1flav)
-            self.out.fillBranch("ZLLCand_Z2mass", ZLLCand_Z2mass)
-            self.out.fillBranch("ZLLCand_Z2flav", ZLLCand_Z2flav)
-            self.out.fillBranch("ZLLCand_Z1l1Idx", ZLLCand_Z1l1Idx)
-            self.out.fillBranch("ZLLCand_Z1l2Idx", ZLLCand_Z1l2Idx)
-            self.out.fillBranch("ZLLCand_Z2l1Idx", ZLLCand_Z2l1Idx)
-            self.out.fillBranch("ZLLCand_Z2l2Idx", ZLLCand_Z2l2Idx)
-            self.out.fillBranch("ZLLCand_KD",     ZLLCand_KD)
-            if self.addSSCR :
-                self.out.fillBranch("ZLLbestSSIdx",  bestSSCRIdx)
-            if self.addOSCR :
-                self.out.fillBranch("ZLLbest2P2FIdx", best2P2FCRIdx)
-                self.out.fillBranch("ZLLbest3P1FIdx", best3P1FCRIdx)
-            if self.addSIPCR :
-                self.out.fillBranch("ZLLbestSIPCRIdx", bestSIPCRIdx)
+        final_cands = {}
+        if (len(sr_cands) == 0) and len(temp_zlls) == 0:
+            return False
+        
+        else:
+            # sr_cands can have at most one candidate inside
+            if len(sr_cands) > 0:
+                final_cands["SR"] = sr_cands[0]
+            
+            elif len(temp_zlls) == 1:
+                region = list(temp_zlls.keys())[0]
+                final_cands[region] = temp_zlls[region]
+            else:
+                # fill final_cands dict with best of non-overlapping cands
+                final_cands = self.bestZLLs(temp_zlls, final_cands)
 
-        if self.addZLCR :
-            self.out.fillBranch("ZLCand_lepIdx", ZLCand_lIdx)
+        if len(final_cands) == 0:
+            return False
 
-        ### Fill control plot (example)
-        # self.h_ZZMass.Fill(ZZCand_mass[bestCandIdx])
-
+        self.write_branches(final_cands)
+            
         return True
-
-
-    # Temporary class to store information on a ZZ candidate.
-    # NOTE: We may need to move Zs into the Event as persistent objects, and to be re-used for CRs. They would be built by a separate module in that case.
+    
     class ZCand: 
-        def __init__(self, l1Idx, l2Idx, leps, fsrPhotons):
+        def __init__(self, l1Idx, l2Idx, l1, l2, fsrPhotons, tightMass=10):
             self.l1Idx = l1Idx
             self.l2Idx = l2Idx
-            self.l1 = leps[l1Idx]
-            self.l2 = leps[l2Idx]
+            self.l1    = l1
+            self.l2    = l2
             self.fsr1Idx = self.l1.fsrPhotonIdx
             self.fsr2Idx = self.l2.fsrPhotonIdx
     
@@ -549,6 +504,22 @@ class ZZFiller(Module):
             self.p4 = self.l1DressedP4 + self.l2DressedP4
     
             self.M = self.p4.M() # cache the mass as it is used often
+
+            self.ZmassValue = 91.1876
+
+            self.OS = self.l1.pdgId == -self.l2.pdgId
+            self.SS = self.l1.pdgId == self.l2.pdgId
+
+            self.PassSelNoSIP = False
+            self.PassSIP      = False
+            if self.l1.ZZFullSelNoSIP and self.l2.ZZFullSelNoSIP:
+                self.PassSelNoSIP = True
+            if self.l1.ZZFullSel and self.l2.ZZFullSel:
+                self.PassSIP = True
+
+            self.OnShell = abs(self.M - self.ZmassValue) < tightMass
+
+            self.Z1Cand  = self.OS and self.PassSIP and self.OnShell
     
         def sumpt(self) : # sum of lepton pTs, used to sort candidates
             return self.l1.pt+self.l2.pt
@@ -556,16 +527,36 @@ class ZZFiller(Module):
         def finalState(self) :
             return self.l1.pdgId*self.l2.pdgId
     
-    
     # Temporary class to store information on a ZZ candidate.
-    class ZZCand:
-        def __init__(self, Z1, Z2, p_GG_SIG_ghg2_1_ghz1_1_JHUGen=0., p_QQB_BKG_MCFM=1.):
+    class ZZCand_Base:
+        def __init__(self, Z1, Z2):
             self.Z1 = Z1
             self.Z2 = Z2
+
+            self.lepsExclusive = self.Z1.l1 != self.Z2.l1 and self.Z1.l1 != self.Z2.l2 and self.Z1.l2 != self.Z2.l1 and self.Z1.l2 != self.Z2.l2
+
             self.p4 = Z1.p4+Z2.p4
-            self.p_GG_SIG_ghg2_1_ghz1_1_JHUGen = p_GG_SIG_ghg2_1_ghz1_1_JHUGen
-            self.p_QQB_BKG_MCFM = p_QQB_BKG_MCFM
-            self.KD = p_GG_SIG_ghg2_1_ghz1_1_JHUGen/(p_GG_SIG_ghg2_1_ghz1_1_JHUGen+p_QQB_BKG_MCFM) # without c-constants, for candidate sorting
+
+            self.M = self.p4.M()
+
+            angVars = AngularVars(self)
+            self.cosTheta1 = angVars.cosTheta("1")
+            self.cosTheta3 = angVars.cosTheta("2")
+
+            self.HighMass = self.M > 180.
+            self.MidMass  = 140. < self.M < 180.
+            self.LowMass  = 105. < self.M < 140.
+
+            # Minimum requirements to belong to any region
+            self.passBaseline = self.Z1.Z1Cand and self.lepsExclusive and self.passLepPts() and self.passQCDandDeltaR() and self.M > 105
+            
+            self.SR = self.passBaseline and self.Z2.Z1Cand and self.HighMass
+
+            self.OS = self.Z2.OS
+            self.SS = self.Z2.SS
+
+            self.PassSIP = self.Z2.PassSIP
+            self.Z2OnShell = self.Z2.OnShell
 
         def finalState(self) :
             return self.Z1.finalState()*self.Z2.finalState()
@@ -576,6 +567,27 @@ class ZZFiller(Module):
         def leps(self) :
             return([self.Z1.l1, self.Z1.l2, self.Z2.l1, self.Z2.l2])
 
+        def passLepPts(self, lead=20., sublead=10.):
+            lep_pts = [l.pt for l in self.leps()]
+            lep_pts.sort()
+
+            return lep_pts[3] > lead and lep_pts[2] > sublead
+
+        def passQCDandDeltaR(self):
+            zzleps = self.leps()
+            # QCD suppression on all OS pairs, regardelss of flavour
+            passQCD = True    # QCD suppression on all OS pairs, regardelss of flavour
+            passDeltaR = True # DeltaR>0.02 cut among all leptons to protect against split tracks
+            for k in range(4):
+                for l in range (k+1,4):
+                    if zzleps[k].charge!=zzleps[l].charge and (zzleps[k].p4()+zzleps[l].p4()).M()<=4.:
+                        passQCD = False
+                        break
+                    if deltaR(zzleps[k].eta, zzleps[k].phi, zzleps[l].eta, zzleps[l].phi) <= 0.02 :
+                        passDeltaR = False
+                        break
+
+            return passQCD and passDeltaR
 
     ### Compute lepton efficiency scale factor
     def getDataMCWeight(self, leps) :
@@ -597,124 +609,3 @@ class ZZFiller(Module):
            dataMCWeight *= SF
 
        return dataMCWeight
-
-
-    ### Comparators to select the best candidate in the event. Return -1 if a is better than b, +1 otherwise
-    # Choose by abs(MZ1-MZ), or sum(PT) if same Z1
-    def bestCandByZ1Z2(self,a,b): 
-        if abs(a.Z1.M-b.Z1.M) < 1e-4 : # same Z1: choose the candidate with highest-pT Z2 leptons
-            if a.Z2.sumpt() > b.Z2.sumpt() :
-                return -1
-            else :
-                return 1
-        else : # choose based on Z1 masses
-            if abs(a.Z1.M-self.ZmassValue) < abs(b.Z1.M-self.ZmassValue) :
-                return -1 
-            else :
-                return 1
-
-    # Choose by DbkgKin
-    def bestCandByDbkgKin(self,a,b): 
-        if abs((a.p4).M() - (b.p4).M())<1e-4 and a.finalState()==b.finalState() and (a.finalState() == 28561 or a.finalState()==14641) : # Equivalent: same masss (tolerance 100 keV) and same FS -> same leptons and FSR
-            return self.bestCandByZ1Z2(a,b)
-        if a.KD > b.KD : return -1 # choose by best dbkgkin
-        else: return 1
-        
-
-    # Build a ZZ object from given Za, Zb pair, if it passes selection cuts; None is returned otherwise.
-    # All relevant candidate variables are computed for the candidate. Options:
-    #  sortZsByMass : set Z1 and Z2 according to closest-Mz criteria (for SR); otherwise, specified order is
-    #                 kept (useful for CRs)
-    def makeCand(self, Za, Zb, sortZsByMass=True, fillIDVars=True) :
-        # check that these Zs are mutually exclusive (not sharing the same lepton) 
-        if Za.l1Idx==Zb.l1Idx or Za.l2Idx==Zb.l2Idx or Za.l2Idx==Zb.l1Idx or Za.l2Idx==Zb.l2Idx: return None
-        
-        # set Z1 and Z2
-        Z1, Z2 = Za, Zb
-        if sortZsByMass and abs(Zb.M-self.ZmassValue) < abs(Za.M-self.ZmassValue):
-            Z1, Z2 = Z2, Z1
-
-        # Z1 mass cut
-        if Z1.M <= 40. : return None
-
-        zzleps = [Z1.l1, Z1.l2, Z2.l1, Z2.l2]
-        lepPts = []
-        # QCD suppression on all OS pairs, regardelss of flavour
-        passQCD = True    # QCD suppression on all OS pairs, regardelss of flavour
-        passDeltaR = True # DeltaR>0.02 cut among all leptons to protect against split tracks
-        for k in range(4):
-            lepPts.append(zzleps[k].pt)
-            for l in range (k+1,4):
-                if zzleps[k].charge!=zzleps[l].charge and (zzleps[k].p4()+zzleps[l].p4()).M()<=4.:
-                    passQCD = False
-                    break
-                if deltaR(zzleps[k].eta, zzleps[k].phi, zzleps[l].eta, zzleps[l].phi) <= 0.02 :
-                    passDeltaR = False
-                    break
-
-        if not (passQCD and passDeltaR) : return None
-
-        # trigger acceptance cuts (20,10 GeV)
-        lepPts.sort()
-        if not (lepPts[3]>20. and lepPts[2]>10.) : return None
-
-        #"Smart cut" on alternate pairings for same-sign candidates
-        if abs(Z1.l1.pdgId) == abs(Z2.l1.pdgId):
-            mZa, mZb = 0., 0.
-            if Z1.l1.pdgId == -Z2.l1.pdgId:
-                mZa=(Z1.l1DressedP4+Z2.l1DressedP4).M()
-                mZb=(Z1.l2DressedP4+Z2.l2DressedP4).M()
-            elif Z1.l1.pdgId == -Z2.l2.pdgId:
-                mZa=(Z1.l1DressedP4+Z2.l2DressedP4).M()
-                mZb=(Z1.l2DressedP4+Z2.l1DressedP4).M()
-            if (abs(mZa-self.ZmassValue)>abs(mZb-self.ZmassValue)) : mZa, mZb = mZb, mZa
-            if (abs(mZa-self.ZmassValue)<abs(Z1.M-self.ZmassValue)) and mZb < 12.: return None
-
-        #Compute D_bkg^kin
-        p_GG_SIG_ghg2_1_ghz1_1_JHUGen = 0.
-        p_QQB_BKG_MCFM = 1.
-        if self.runMELA:
-            daughters = SimpleParticleCollection_t()
-            daughters.push_back(SimpleParticle_t(Z1.l1.pdgId, Z1.l1DressedP4))
-            daughters.push_back(SimpleParticle_t(Z1.l2.pdgId, Z1.l2DressedP4))
-            daughters.push_back(SimpleParticle_t(Z2.l1.pdgId, Z2.l1DressedP4))
-            daughters.push_back(SimpleParticle_t(Z2.l2.pdgId, Z2.l2DressedP4))
-            self.mela.setInputEvent(daughters, 0, 0, 0)
-            self.mela.setProcess(TVar.HSMHiggs, TVar.JHUGen, TVar.ZZGG)
-            res = c_float(0.)
-            self.mela.computeP(res,True)
-            p_GG_SIG_ghg2_1_ghz1_1_JHUGen = res.value
-            self.mela.setProcess(TVar.bkgZZ, TVar.MCFM, TVar.ZZQQB)
-            self.mela.computeP(res,True)
-            p_QQB_BKG_MCFM = res.value
-            self.mela.resetInputEvent()
-        if (p_GG_SIG_ghg2_1_ghz1_1_JHUGen+p_QQB_BKG_MCFM == 0.) :
-            print ("ERROR", p_GG_SIG_ghg2_1_ghz1_1_JHUGen, p_QQB_BKG_MCFM)
-            p_QQB_BKG_MCFM = 1. # FIXME: fix for error with message: "TUtil::CheckPartonMomFraction: At least one of the parton momentum fractions is greater than 1."
-        ZZ = self.ZZCand(Z1, Z2, p_GG_SIG_ghg2_1_ghz1_1_JHUGen, p_QQB_BKG_MCFM)
-
-        # Set flags for IDs passed by all leptons of candidate (muon only for the time being), which are 
-        # used for studies on ID tuning
-        if fillIDVars:
-            passId = [True]*len(self.muonIDs)
-            for iID, ID in enumerate(self.muonIDs) :
-                for ilep in range(4):
-                    if abs(zzleps[ilep].pdgId)==13 and not ID["sel"](zzleps[ilep]) :
-                        passId[iID] = False
-                        continue
-            ZZ.passId = passId
-
-            # Set worst value of specified selection variables (muon only, for the time being)
-            worstVar = [99.]*len(self.muonIDVars)
-            for iVar, var in enumerate(self.muonIDVars):
-                if var["name"].startswith("max") : worstVar[iVar] = -1.
-                for iilep in range(4) :
-                    if abs(zzleps[iilep].pdgId)==11 : continue
-                    else :
-                        if var["name"].startswith("max") :
-                            worstVar[iVar] = max(worstVar[iVar], var["sel"](zzleps[iilep]))                                    
-                        else :
-                            worstVar[iVar] = min(worstVar[iVar], var["sel"](zzleps[iilep]))
-            ZZ.worstVar = worstVar
-
-        return ZZ

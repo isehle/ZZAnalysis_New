@@ -34,13 +34,13 @@ IsMC = getConf("IsMC", True)
 PD = getConf("PD", "")
 XSEC = getConf("XSEC", 1.)
 SYNCMODE = getConf("SYNCMODE", False)
-runMELA = getConf("runMELA", True)
-bestCandByMELA = getConf("bestCandByMELA", True) # requires also runMELA=True
+runMELA = getConf("runMELA", False)
+bestCandByMELA = getConf("bestCandByMELA", False) # requires also runMELA=True
 TRIGPASSTHROUGH = getConf("TRIGPASSTHROUGH", False) # Do not filter events that do not pass triggers (HLT_passZZ4l records if they did)
 PROCESS_CR = getConf("PROCESS_CR", False) # fill control regions
 PROCESS_ZL = getConf("PROCESS_ZL", False) # fill ZL control region
-APPLYMUCORR = getConf("APPLYMUCORR", True) # apply muon momentum scale/resolution corrections
-APPLYELECORR = getConf("APPLYELECORR", True) # apply electron momentum scale/resolution corrections
+APPLYMUCORR = getConf("APPLYMUCORR", False) # apply muon momentum scale/resolution corrections
+APPLYELECORR = getConf("APPLYELECORR", False) # apply electron momentum scale/resolution corrections
 # ggH NNLOPS weight
 APPLY_QCD_GGF_UNCERT = getConf("APPLY_QCD_GGF_UNCERT", False) 
 # K factors for ggZZ (and old NLO ggH samples) 0:None; 1: NNLO/LO; 2: NNLO/NLO; 3: NLO/LO
@@ -132,7 +132,7 @@ if not IsMC :
 reco_sequence = [lepFiller(cuts, LEPTON_SETUP), # FSR and FSR-corrected iso; flags for passing IDs
                  ZZFiller(runMELA, bestCandByMELA, IsMC, LEPTON_SETUP, PROCESS_CR, DATA_TAG, addZL=PROCESS_ZL, debug=DEBUG), # Build ZZ candidates; choose best candidate; filter events with candidates
                  jetFiller(), # Jets cleaning with leptons
-                 ZZExtraFiller('SR'), # Add information on extra objects to the selected best candidate
+                 #ZZExtraFiller('SR'), # Add information on extra objects to the selected best candidate
                  # MELAFiller(), # Compute the full set of discriminants for the best candidate
                  ]
 
@@ -219,7 +219,9 @@ branchsel_out = ['drop *',
                  'keep HLT_TripleMu*',
                  'keep HLT_IsoMu*',
                  'keep HLT_passZZ*',
-                 'keep best*', # best candidate indices
+                 'keep SR',
+                 'keep OS*',
+                 'keep SS*',
                  'keep Z*', # Z, ZZ, ZLL candidates
                  'keep MET_pt',
                  #'keep PV*',
