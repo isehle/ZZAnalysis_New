@@ -206,11 +206,9 @@ class ZZFiller(Module):
 
         self.sign_reg  = ("OS", "SS")
         self.mass_reg  = ("HighMass", "MidMass", "LowMass")
-        self.sip_reg   = ("PassSIP", "FailSIP", "NoSIP")
-
-        self.props  = (("mass", "F"), ("pt", "F"), ("eta", "F"), ("phi", "F"), ("massPreFSR", "F"),
-                          ("Z1mass", "F"), ("Z1flav", "I"), ("Z2mass", "F"), ("Z2flav", "I"), ("KD", "F"),
-                          ("Z1l1Idx", "S"), ("Z1l2Idx", "S"), ("Z2l1Idx", "S"), ("Z2l2Idx", "S"))
+        #self.sip_reg   = ("PassSIP", "FailSIP", "NoSIP")
+        self.sip_reg   = ("PassSIP", "FailSIP")
+        #self.sip_reg   = ("NoSIP")
         
         self.props = (("mass", "F"), ("pt", "F"), ("eta", "F"), ("phi", "F"), ("cosTheta1", "F"), ("cosTheta3", "F"), ("massPreFSR", "F"),
                           ("Z1mass", "F"), ("Z1pt", "F"), ("Z1eta", "F"), ("Z1phi", "F"), ("Z1flav", "I"),
@@ -229,10 +227,11 @@ class ZZFiller(Module):
             self.out.branch(cr_branch, typ, lenVar="nZLLCand")
             
         if self.isMC:
-            self.out.branch("ZZCand_dataMCWeight", "F", lenVar="nZLLCand", title="data/MC efficiency correction weight")
+            self.out.branch("ZZCand_dataMCWeight", "F", lenVar="nZZCand", title="data/MC efficiency correction weight")
 
         # CR Filter branches
-        self.cr_regions = ["{}_{}_{}".format(sign, sip, mass) for sign in self.sign_reg for sip in self.sip_reg for mass in self.mass_reg]
+        #self.cr_regions = ["{}_{}_{}".format(sign, sip, mass) for sign in self.sign_reg for sip in self.sip_reg for mass in self.mass_reg]
+        self.cr_regions = ["{}_NoSIP_{}".format(sign, mass) for sign in self.sign_reg for mass in self.mass_reg]
         for branch in self.cr_regions:
             self.out.branch(branch, "O", lenVar="nZLLCand")
         
@@ -248,11 +247,11 @@ class ZZFiller(Module):
 
         cands = dict(
             Z1_Cands   = [],
-            OS_PassSIP = [], # Only difference from above is that the Z2 is off shell
-            OS_FailSIP = [],
+            #OS_PassSIP = [], # Only difference from above is that the Z2 is off shell
+            #OS_FailSIP = [],
             OS_NoSIP   = [],
-            SS_PassSIP = [],
-            SS_FailSIP = [],
+            #SS_PassSIP = [],
+            #SS_FailSIP = [],
             SS_NoSIP   = [],
         )
 
@@ -276,13 +275,13 @@ class ZZFiller(Module):
                             key = "OS" if aZ.OS else "SS"
                             
                             cands[key+"_NoSIP"].append(aZ)
-                            if aZ.PassSIP:
+                            '''if aZ.PassSIP:
                                 cands[key+"_PassSIP"].append(aZ)
                             else:
-                                cands[key+"_FailSIP"].append(aZ)
+                                cands[key+"_FailSIP"].append(aZ)'''
                             
-                            #key += "_PassSIP" if aZ.PassSIP else "_FailSIP"
-                            #cands[key].append(aZ)
+                            '''key += "_PassSIP" if aZ.PassSIP else "_FailSIP"
+                            cands[key].append(aZ)'''
         
         return cands
 
@@ -369,11 +368,13 @@ class ZZFiller(Module):
         for reg_pair in reg_pairs:
             reg_1, reg_2 = reg_pair
             
-            # NoSIP region _does_ overlap with other regions
+            # NoSIP region _does_ overlap with Pass/Fail Regions
             if ("NoSIP" in reg_1) or ("NoSIP" in reg_2):
-                final_cands[reg_1] = temp_zlls[reg_1]
-                final_cands[reg_2] = temp_zlls[reg_2]
-                continue
+                # Only overlap allowed is in SIP Flags
+                if np.array_equal(np.char.equal(reg_1.split("_"), reg_2.split("_")), [True, False, True]):
+                    final_cands[reg_1] = temp_zlls[reg_1]
+                    final_cands[reg_2] = temp_zlls[reg_2]
+                    continue
 
             cand_1_leps, cand_2_leps = lep_lists[reg_1], lep_lists[reg_2]
             
@@ -397,14 +398,12 @@ class ZZFiller(Module):
         
         cand_props = candProps(final_cands, self.filt_regions)
 
-        if cand_props.branches["SR"][0]:
-
-            prep     = "ZZCand_"
-            if self.isMC:
+        if self.isMC:
+            if cand_props.branches["SR"][0]:
                 mcWeight = [self.getDataMCWeight(final_cands["SR"].leps())]
                 self.out.fillBranch("ZZCand_dataMCWeight", mcWeight)
-        else:
-            prep = "ZLLCand_"
+            else:
+                self.out.fillBranch("ZZCand_dataMCWeight", [])
         
         prep = "ZZCand_" if cand_props.branches["SR"][0] else "ZLLCand_"
         

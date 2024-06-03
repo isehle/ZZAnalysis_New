@@ -222,7 +222,7 @@ branchsel_out = ['drop *',
                  'keep SR',
                  'keep OS*',
                  'keep SS*',
-                 'keep Z*', # Z, ZZ, ZLL candidates
+                 'keep Z*', # Z, ZZ, ZLL candidates,
                  'keep MET_pt',
                  #'keep PV*',
                  #'keep Flag*',
