@@ -90,6 +90,7 @@ class candProps:
             phi          = lambda cand: cand.p4.Phi(),
             cosTheta1    = lambda cand: cand.cosTheta1,
             cosTheta3    = lambda cand: cand.cosTheta3,
+            cosThetaStar = lambda cand: cand.cosThetaStar,
             massPreFSR   = lambda cand: cand.massPreFSR(),
             Z1mass       = lambda cand: cand.Z1.M,
             Z1pt         = lambda cand: cand.Z1.p4.Pt(),
@@ -207,12 +208,8 @@ class ZZFiller(Module):
         self.sign_reg  = ("OS", "SS")
         self.mass_reg  = ("HighMass", "MidMass", "LowMass")
         self.sip_reg   = ("PassSIP", "FailSIP", "NoSIP")
-
-        self.props  = (("mass", "F"), ("pt", "F"), ("eta", "F"), ("phi", "F"), ("massPreFSR", "F"),
-                          ("Z1mass", "F"), ("Z1flav", "I"), ("Z2mass", "F"), ("Z2flav", "I"), ("KD", "F"),
-                          ("Z1l1Idx", "S"), ("Z1l2Idx", "S"), ("Z2l1Idx", "S"), ("Z2l2Idx", "S"))
         
-        self.props = (("mass", "F"), ("pt", "F"), ("eta", "F"), ("phi", "F"), ("cosTheta1", "F"), ("cosTheta3", "F"), ("massPreFSR", "F"),
+        self.props = (("mass", "F"), ("pt", "F"), ("eta", "F"), ("phi", "F"), ("cosTheta1", "F"), ("cosTheta3", "F"), ("cosThetaStar", "F"), ("massPreFSR", "F"),
                           ("Z1mass", "F"), ("Z1pt", "F"), ("Z1eta", "F"), ("Z1phi", "F"), ("Z1flav", "I"),
                           ("Z2mass", "F"), ("Z2pt", "F"), ("Z2eta", "F"), ("Z2phi", "F"), ("Z2flav", "I"),
                           ("KD", "F"), ("Z1l1Idx", "S"), ("Z1l2Idx", "S"), ("Z2l1Idx", "S"), ("Z2l2Idx", "S"))
@@ -229,10 +226,12 @@ class ZZFiller(Module):
             self.out.branch(cr_branch, typ, lenVar="nZLLCand")
             
         if self.isMC:
-            self.out.branch("ZZCand_dataMCWeight", "F", lenVar="nZLLCand", title="data/MC efficiency correction weight")
+            self.out.branch("ZZCand_dataMCWeight", "F", lenVar="nZZCand", title="data/MC efficiency correction weight")
+            self.out.branch("ZZCand_dataMCWeight_err", "F", lenVar="nZZCand", title="error in data/MC efficiency correction weight")
 
         # CR Filter branches
-        self.cr_regions = ["{}_{}_{}".format(sign, sip, mass) for sign in self.sign_reg for sip in self.sip_reg for mass in self.mass_reg]
+        #self.cr_regions = ["{}_{}_{}".format(sign, sip, mass) for sign in self.sign_reg for sip in self.sip_reg for mass in self.mass_reg]
+        self.cr_regions = ["{}_NoSIP_{}".format(sign, mass) for sign in self.sign_reg for mass in self.mass_reg]
         for branch in self.cr_regions:
             self.out.branch(branch, "O", lenVar="nZLLCand")
         
@@ -248,11 +247,11 @@ class ZZFiller(Module):
 
         cands = dict(
             Z1_Cands   = [],
-            OS_PassSIP = [], # Only difference from above is that the Z2 is off shell
-            OS_FailSIP = [],
+            #OS_PassSIP = [], # Only difference from above is that the Z2 is off shell
+            #OS_FailSIP = [],
             OS_NoSIP   = [],
-            SS_PassSIP = [],
-            SS_FailSIP = [],
+            #SS_PassSIP = [],
+            #SS_FailSIP = [],
             SS_NoSIP   = [],
         )
 
@@ -276,10 +275,10 @@ class ZZFiller(Module):
                             key = "OS" if aZ.OS else "SS"
                             
                             cands[key+"_NoSIP"].append(aZ)
-                            if aZ.PassSIP:
+                            '''if aZ.PassSIP:
                                 cands[key+"_PassSIP"].append(aZ)
                             else:
-                                cands[key+"_FailSIP"].append(aZ)
+                                cands[key+"_FailSIP"].append(aZ)'''
                             
                             #key += "_PassSIP" if aZ.PassSIP else "_FailSIP"
                             #cands[key].append(aZ)
@@ -401,8 +400,12 @@ class ZZFiller(Module):
 
             prep     = "ZZCand_"
             if self.isMC:
-                mcWeight = [self.getDataMCWeight(final_cands["SR"].leps())]
-                self.out.fillBranch("ZZCand_dataMCWeight", mcWeight)
+                mc_weight, mc_weight_err = self.getDataMCWeight(final_cands["SR"].leps())
+                #mcWeight = [self.getDataMCWeight(final_cands["SR"].leps())]
+                #self.out.fillBranch("ZZCand_dataMCWeight", mcWeight)
+                self.out.fillBranch("ZZCand_dataMCWeight", [mc_weight])
+                self.out.fillBranch("ZZCand_dataMCWeight_err", [mc_weight_err])
+                
         else:
             prep = "ZLLCand_"
         
@@ -540,8 +543,9 @@ class ZZFiller(Module):
             self.M = self.p4.M()
 
             angVars = AngularVars(self)
-            self.cosTheta1 = angVars.cosTheta("1")
-            self.cosTheta3 = angVars.cosTheta("2")
+            self.cosTheta1    = angVars.cosTheta("1")
+            self.cosTheta3    = angVars.cosTheta("2")
+            self.cosThetaStar = angVars.cosThetaStar()
 
             self.HighMass = self.M > 180.
             self.MidMass  = 140. < self.M < 180.
@@ -592,6 +596,7 @@ class ZZFiller(Module):
     ### Compute lepton efficiency scale factor
     def getDataMCWeight(self, leps) :
        dataMCWeight = 1.
+       errs = []
        for lep in leps:           
            myLepID = abs(lep.pdgId)
            mySCeta = lep.eta
@@ -605,7 +610,9 @@ class ZZFiller(Module):
            mySCeta = max(mySCeta,-2.49)
 
            SF = self.lepSFHelper.getSF(self.year, myLepID, lep.pt, lep.eta, mySCeta, isCrack)
-#           SF_Unc = self.lepSFHelper.getSFError(year, myLepID, lep.pt, lep.eta, mySCeta, isCrack)
            dataMCWeight *= SF
+           SF_Unc = self.lepSFHelper.getSFError(self.year, myLepID, lep.pt, lep.eta, mySCeta, isCrack)
+           errs.append(SF_Unc)
+       data_mc_w_err = np.sqrt(np.sum([err**2 for err in errs]))
 
-       return dataMCWeight
+       return dataMCWeight, data_mc_w_err

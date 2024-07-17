@@ -2,6 +2,7 @@ import ROOT
 
 import awkward as ak
 import numpy as np
+import uproot as up
 
 import hist
 from hist import Hist
@@ -26,9 +27,6 @@ RVecF applyRegFilt(RVecF &prop, RVecB &regMask){
     return reg_prop;
 }
 """)
-
-qqZZ_MG     = "/afs/cern.ch/user/i/iehle/polZZTo4l/CMSSW_13_0_16/src/ZZAnalysis/pol_skims/ZZ_hadd_Skim.root"
-qqZZ_Powheg = "/eos/user/i/iehle/Analysis/MC_2022EE_wCosTheta_wNoSIPCR/ZZTo4l_Chunk2/ZZ4lAnalysis.root"
 
 hist_info = dict(
     mass = dict(
@@ -56,7 +54,7 @@ hist_info = dict(
         flow  = False
     ),
     cosTheta1 = dict(
-        bins = int(2/0.1),
+        bins = int(2/0.3),
         start = -1,
         stop = 1,
         name = r"$cos(\theta_1)$",
@@ -64,11 +62,19 @@ hist_info = dict(
         flow = False
     ),
     cosTheta3 = dict(
-        bins = int(2/0.1),
+        bins = int(2/0.3),
         start = -1,
         stop = 1,
         name = r"$cos(\theta_3)$",
         label= r"$cos(\theta_3)$",        
+        flow = False
+    ),
+    cosThetaStar = dict(
+        bins = int(2/0.3),
+        start = -1,
+        stop = 1,
+        name = r"$cos(\theta*)$",
+        label= r"$cos(\theta*)$",        
         flow = False
     ),
     Z1mass = dict(
@@ -113,7 +119,6 @@ hist_info = dict(
     )
 )
 
-
 def get_df(path):
     df = ROOT.RDataFrame("Events", path)
     df = df.Filter("HLT_passZZ4l")
@@ -141,7 +146,8 @@ def get_arrs(path, props):
 
     arrs = ak.from_rdataframe(df, columns=props)
 
-    good_idx = ak.flatten(np.argwhere(ak.num(arrs['mass']) == 1))
+    #good_idx = ak.flatten(np.argwhere(ak.num(arrs['mass']) == 1))
+    good_idx = ak.flatten(np.argwhere(ak.num(arrs['cosTheta1']) == 1))
 
     good_arrs = {}
     for prop in arrs.fields:
@@ -184,11 +190,12 @@ def plot_dir(cat, reg="SR", base_dir="/eos/user/i/iehle/Analysis/pngs/plots/", d
     Path(direc).mkdir(parents=True, exist_ok=True)
     return direc
 
-def main():
-    props   = ["mass", "pt", "eta", "Z1mass", "Z2mass", "cosTheta1", "cosTheta3", "weight"]
+def main(mg_path, pwg_path):
+    #props   = ["mass", "pt", "eta", "Z1mass", "Z2mass", "cosTheta1", "cosTheta3", "cosThetaStar", "weight"]
+    props   = ["cosTheta1", "cosTheta3", "cosThetaStar", "weight"]
 
-    mg_arrs = get_arrs(qqZZ_MG, props)
-    pwg_arrs = get_arrs(qqZZ_Powheg, props)
+    mg_arrs = get_arrs(mg_path, props)
+    pwg_arrs = get_arrs(pwg_path, props)
 
     hists = get_hists(mg_arrs, pwg_arrs, props)
 
@@ -212,10 +219,46 @@ def main():
             rp_uncert_draw_type = "line"
         )
         
-        plt.setp(subplot_ax_artists[0].axes, ylim=(0,1.1*max_ratio))
+        plt.setp(subplot_ax_artists[0].axes, ylim=(0.6,1.1*max_ratio))
 
         plot_path = os.path.join(direc, f"{prop}_MG_Powheg_Ratio_betterYLim.png")
         plt.savefig(plot_path)
 
+'''def main(hfiles):
+    fstates = ["fs_{}".format(state) for state in ["4e", "4mu", "2e2mu"]]
+    direc = plot_dir("ZZTo4l")
+    for prop, path in hfiles.items():
+        with up.open(path) as hfile:
+            for fs in fstates:
+
+                mg_hist  = hfile[fs+"/ZZ_LO"]
+                pwg_hist = hfile[fs+"/ZZ_NLO"]
+
+                ratio     = mg_hist.values()/pwg_hist.values()
+                max_ratio = max(np.max(ratio[np.isfinite(ratio)]), 1)
+
+                errors = ratio*np.sqrt((mg_hist.errors()/mg_hist.values())**2 + (pwg_hist.errors()/pwg_hist.values())**2)
+
+                fig, ax = plt.subplots()
+
+                ax.errorbar(np.linspace(-1, 1, 10), ratio, yerr=errors)
+
+                plot_path = os.path.join(direc, f"{prop}_MG_Powheg_Ratio_betterYLim_{fs}.png")
+                plt.savefig(plot_path)'''
+
+
 if __name__=="__main__":
-    main()
+    #qqZZ_MG     = "/afs/cern.ch/user/i/iehle/polZZTo4l/CMSSW_13_0_16/src/ZZAnalysis/pol_skims/ZZ_hadd_Skim.root"
+    #qqZZ_Powheg = "/eos/user/i/iehle/Analysis/MC_2022EE_wCosTheta_wNoSIPCR/ZZTo4l_Chunk2/ZZ4lAnalysis.root"
+
+    qqZZ_MG     = "/afs/cern.ch/user/i/iehle/polZZTo4l_New/CMSSW_13_0_16/src/ZZAnalysis/pol_skims/wCosThetaStar/ZZ_hadd_Skim.root"
+    qqZZ_Powheg = "/eos/user/i/iehle/Analysis/MC_2022EE_wCosThetaStar/ZZTo4l_Chunk1/ZZ4lAnalysis.root"
+
+    '''hfiles = dict(
+        cosTheta1    = "all_cosTheta1_hists_v2.root",
+        cosTheta3    = "all_cosTheta3_hists.root",
+        cosThetaStar = "all_cosThetaStar_hists.root"
+    )
+    main(hfiles)'''
+    
+    main(qqZZ_MG, qqZZ_Powheg)

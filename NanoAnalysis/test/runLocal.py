@@ -21,9 +21,8 @@ SampleToRun = "ZZTo4L_2022EE_MG" # Privately produced MadGraph LO
 ### Customize processing variables
 #setConf("runMELA", False)
 #setConf("bestCandByMELA", False)
-setConf("APPLYMUCORR", False) #NOTE: mu corrections removed for comparision with mini since they are not deterministic on nanoAOD.
-setConf("APPLYELECORR", False) #NOTE: ele corrections removed for comparision with mini since they are not deterministic on nanoAOD.
-
+#setConf("APPLYMUCORR", False) #NOTE: mu corrections removed for comparision with mini since they are not deterministic on nanoAOD.
+#setConf("APPLYELECORR", False) #NOTE: ele corrections removed for comparision with mini since they are not deterministic on nanoAOD.
 
 ## Force filling K factors and weights (default: all off)
 #setConf("APPLY_K_NNLOQCD_ZZGG", 1) # 0:None; 1: NNLO/LO; 2: NNLO/NLO; 3: NLO/LO
