@@ -11,7 +11,7 @@ from PhysicsTools.HeppyCore.utils.deltar import deltaR
 
 
 class lepFiller(Module):
-    def __init__(self, cuts, era):
+    def __init__(self, cuts, era, variation="nominal"):
         print("***lepFiller: era:", era, flush=True)
         self.writeHistFile=False
         self.cuts = cuts
@@ -26,6 +26,9 @@ class lepFiller(Module):
         self.muFullId = cuts["muFullId"]
         self.muFullIdNoSIP = cuts["muFullIdNoSIP"]
         self.era = era
+        # For systematic treatment of smear/scale up/down variations
+        self.var = variation
+        self.var_tag = "" if variation == "nominal" else "_"+variation
 
     def beginFile(self, inputFile, outputFile, inputTree, wrappedOutputTree):
         self.out = wrappedOutputTree
@@ -33,25 +36,25 @@ class lepFiller(Module):
         self.out.branch("FsrPhoton_mass", "F", lenVar="nFsrPhoton") # Hack so that photon.p4() works
         self.out.branch("FsrPhoton_dROverEt2", "F", lenVar="nFsrPhoton") # Overwrite existing value
 
-        self.out.branch("Electron_passBDT", "O", lenVar="nElectron", title="pass H4l BDT cut")
-        self.out.branch("Electron_ZZFullSel", "O", lenVar="nElectron", title="pass H4l full SR selection (for electrons,=FullID)")
-        self.out.branch("Electron_ZZFullId", "O", lenVar="nElectron", title="pass H4l full ID selection")
-        self.out.branch("Electron_ZZFullSelNoSIP", "O", lenVar="nElectron", title="pass H4l full ID without SIP (base for CR SIP  method)")
-        self.out.branch("Electron_ZZRelaxedId", "O", lenVar="nElectron", title="pass H4l relaxed ID including SIP (base for SS and OS CRs)")
-        self.out.branch("Electron_ZZRelaxedIdNoSIP", "O", lenVar="nElectron", title="pass H4l relaxed ID without SIP (widest subset of cuts commont to all CRs)")
-        self.out.branch("Electron_fsrPhotonIdx", "S", lenVar="nElectron") # Overwrite existing value
-        self.out.branch("Electron_pfRelIso03FsrCorr", "F", lenVar="nElectron", title="FSR-subtracted pfRelIso03")
-        self.out.branch("Electron_passIso", "O", lenVar="nElectron", title="always True for electrons")
+        self.out.branch("Electron_passBDT{}".format(self.var_tag), "O", lenVar="nElectron", title="pass H4l BDT cut")
+        self.out.branch("Electron_ZZFullSel{}".format(self.var_tag), "O", lenVar="nElectron", title="pass H4l full SR selection (for electrons,=FullID)")
+        self.out.branch("Electron_ZZFullId{}".format(self.var_tag), "O", lenVar="nElectron", title="pass H4l full ID selection")
+        self.out.branch("Electron_ZZFullSelNoSIP{}".format(self.var_tag), "O", lenVar="nElectron", title="pass H4l full ID without SIP (base for CR SIP  method)")
+        self.out.branch("Electron_ZZRelaxedId{}".format(self.var_tag), "O", lenVar="nElectron", title="pass H4l relaxed ID including SIP (base for SS and OS CRs)")
+        self.out.branch("Electron_ZZRelaxedIdNoSIP{}".format(self.var_tag), "O", lenVar="nElectron", title="pass H4l relaxed ID without SIP (widest subset of cuts commont to all CRs)")
+        self.out.branch("Electron_fsrPhotonIdx{}".format(self.var_tag), "S", lenVar="nElectron") # Overwrite existing value
+        self.out.branch("Electron_pfRelIso03FsrCorr{}".format(self.var_tag), "F", lenVar="nElectron", title="FSR-subtracted pfRelIso03")
+        self.out.branch("Electron_passIso{}".format(self.var_tag), "O", lenVar="nElectron", title="always True for electrons")
 
-        self.out.branch("Muon_passID", "O", lenVar="nMuon" , title="pass H4l muon ID")
-        self.out.branch("Muon_ZZFullSel", "O", lenVar="nMuon" , title="pass H4l full SR selection (FullID + isolation)")
-        self.out.branch("Muon_ZZFullId", "O", lenVar="nMuon", title="pass H4l full ID selection")
-        self.out.branch("Muon_ZZFullSelNoSIP", "O", lenVar="nMuon", title="pass H4l full ID without SIP (base for CR SIP  method)")
-        self.out.branch("Muon_ZZRelaxedId", "O", lenVar="nMuon", title="pass H4l relaxed ID including SIP (base for SS and OS CRs)")
-        self.out.branch("Muon_ZZRelaxedIdNoSIP", "O", lenVar="nMuon", title="pass H4l relaxed ID without SIP (widest subset of cuts commont to all CRs)")
-        self.out.branch("Muon_fsrPhotonIdx", "S", lenVar="nMuon") # Overwrite existing value
-        self.out.branch("Muon_pfRelIso03FsrCorr", "F", lenVar="nMuon", title="FSR-subtracted pfRelIso03")
-        self.out.branch("Muon_passIso", "O", lenVar="nMuon", title="Pass ZZ isolation cut")
+        self.out.branch("Muon_passID{}".format(self.var_tag), "O", lenVar="nMuon" , title="pass H4l muon ID")
+        self.out.branch("Muon_ZZFullSel{}".format(self.var_tag), "O", lenVar="nMuon" , title="pass H4l full SR selection (FullID + isolation)")
+        self.out.branch("Muon_ZZFullId{}".format(self.var_tag), "O", lenVar="nMuon", title="pass H4l full ID selection")
+        self.out.branch("Muon_ZZFullSelNoSIP{}".format(self.var_tag), "O", lenVar="nMuon", title="pass H4l full ID without SIP (base for CR SIP  method)")
+        self.out.branch("Muon_ZZRelaxedId{}".format(self.var_tag), "O", lenVar="nMuon", title="pass H4l relaxed ID including SIP (base for SS and OS CRs)")
+        self.out.branch("Muon_ZZRelaxedIdNoSIP{}".format(self.var_tag), "O", lenVar="nMuon", title="pass H4l relaxed ID without SIP (widest subset of cuts commont to all CRs)")
+        self.out.branch("Muon_fsrPhotonIdx{}".format(self.var_tag), "S", lenVar="nMuon") # Overwrite existing value
+        self.out.branch("Muon_pfRelIso03FsrCorr{}".format(self.var_tag), "F", lenVar="nMuon", title="FSR-subtracted pfRelIso03")
+        self.out.branch("Muon_passIso{}".format(self.var_tag), "O", lenVar="nMuon", title="Pass ZZ isolation cut")
 
 #    def endFile(self, inputFile, outputFile, inputTree, wrappedOutputTree):
 #        pass
@@ -62,6 +65,7 @@ class lepFiller(Module):
         for f in selectedFSR :
             dR = deltaR(l.eta, l.phi, f.eta, f.phi)
             if dR >0.01 and dR < 0.3 :
+                # THIS NEEDS TO BE CORRECTED FOR VARIATIONS
                 combRelIsoPFFSRCorr = max(0., l.pfRelIso03_all-f.pt/l.pt)
         return combRelIsoPFFSRCorr
 
@@ -73,16 +77,16 @@ class lepFiller(Module):
         fsrPhotons = Collection(event, "FsrPhoton")
 
         # IDs (no iso)
-        eleBDT = list(self.passEleBDT(e) for e in electrons)
-        muID = list(self.passMuID(m) for m in muons)
-        eleRelaxedId = list(self.eleRelaxedId(e) for e in electrons)
-        muRelaxedId = list(self.muRelaxedId(m) for m in muons)
-        eleRelaxedIdNoSIP = list(self.eleRelaxedIdNoSIP(e) for e in electrons)
-        muRelaxedIdNoSIP = list(self.muRelaxedIdNoSIP(m) for m in muons)
-        eleFullId = list(self.eleFullId(e, self.era) for e in electrons)
-        muFullId = list(self.muFullId(m, self.era) for m in muons)
-        eleFullIdNoSIP = list(self.eleFullIdNoSIP(e, self.era) for e in electrons)
-        muFullIdNoSIP = list(self.muFullIdNoSIP(m, self.era) for m in muons)
+        eleBDT = list(self.passEleBDT(e, self.var) for e in electrons)
+        muID = list(self.passMuID(m, self.var) for m in muons)
+        eleRelaxedId = list(self.eleRelaxedId(e, self.var) for e in electrons)
+        muRelaxedId = list(self.muRelaxedId(m, self.var) for m in muons)
+        eleRelaxedIdNoSIP = list(self.eleRelaxedIdNoSIP(e, self.var) for e in electrons)
+        muRelaxedIdNoSIP = list(self.muRelaxedIdNoSIP(m, self.var) for m in muons)
+        eleFullId = list(self.eleFullId(e, self.era, self.var) for e in electrons)
+        muFullId = list(self.muFullId(m, self.era, self.var) for m in muons)
+        eleFullIdNoSIP = list(self.eleFullIdNoSIP(e, self.era, self.var) for e in electrons)
+        muFullIdNoSIP = list(self.muFullIdNoSIP(m, self.era, self.var) for m in muons)
 
         # Skip events that do not contain enough tight leptons (note: for CRs, this should be modified)
 #FIXME: a filter here could speed up things, but must be handled properly
@@ -165,24 +169,24 @@ class lepFiller(Module):
         self.out.fillBranch("FsrPhoton_mass", fsrM)
         self.out.fillBranch("FsrPhoton_dROverEt2", fsrPhoton_mydROverEt2)
 
-        self.out.fillBranch("Electron_passBDT", eleBDT)
-        self.out.fillBranch("Electron_ZZFullSel", eleFullSel)
-        self.out.fillBranch("Electron_ZZFullId", eleFullId)
-        self.out.fillBranch("Electron_ZZRelaxedId", eleRelaxedId)
-        self.out.fillBranch("Electron_ZZRelaxedIdNoSIP", eleRelaxedIdNoSIP)
-        self.out.fillBranch("Electron_ZZFullSelNoSIP", eleFullSelNoSIP)
-        self.out.fillBranch("Electron_fsrPhotonIdx", eleFsrPhotonIdx)
-        self.out.fillBranch("Electron_pfRelIso03FsrCorr", ele_isoFsrCorr)
-        self.out.fillBranch("Electron_passIso", ele_passIso)
+        self.out.fillBranch("Electron_passBDT{}".format(self.var_tag), eleBDT)
+        self.out.fillBranch("Electron_ZZFullSel{}".format(self.var_tag), eleFullSel)
+        self.out.fillBranch("Electron_ZZFullId{}".format(self.var_tag), eleFullId)
+        self.out.fillBranch("Electron_ZZRelaxedId{}".format(self.var_tag), eleRelaxedId)
+        self.out.fillBranch("Electron_ZZRelaxedIdNoSIP{}".format(self.var_tag), eleRelaxedIdNoSIP)
+        self.out.fillBranch("Electron_ZZFullSelNoSIP{}".format(self.var_tag), eleFullSelNoSIP)
+        self.out.fillBranch("Electron_fsrPhotonIdx{}".format(self.var_tag), eleFsrPhotonIdx)
+        self.out.fillBranch("Electron_pfRelIso03FsrCorr{}".format(self.var_tag), ele_isoFsrCorr)
+        self.out.fillBranch("Electron_passIso{}".format(self.var_tag), ele_passIso)
 
-        self.out.fillBranch("Muon_passID", muID)
-        self.out.fillBranch("Muon_ZZFullSel", muFullSel)
-        self.out.fillBranch("Muon_ZZFullId", muFullId)
-        self.out.fillBranch("Muon_ZZRelaxedId", muRelaxedId)
-        self.out.fillBranch("Muon_ZZRelaxedIdNoSIP", muRelaxedIdNoSIP)
-        self.out.fillBranch("Muon_ZZFullSelNoSIP", muFullSelNoSIP)
-        self.out.fillBranch("Muon_fsrPhotonIdx", muFsrPhotonIdx)
-        self.out.fillBranch("Muon_pfRelIso03FsrCorr", mu_isoFsrCorr)
-        self.out.fillBranch("Muon_passIso", mu_passIso)
+        self.out.fillBranch("Muon_passID{}".format(self.var_tag), muID)
+        self.out.fillBranch("Muon_ZZFullSel{}".format(self.var_tag), muFullSel)
+        self.out.fillBranch("Muon_ZZFullId{}".format(self.var_tag), muFullId)
+        self.out.fillBranch("Muon_ZZRelaxedId{}".format(self.var_tag), muRelaxedId)
+        self.out.fillBranch("Muon_ZZRelaxedIdNoSIP{}".format(self.var_tag), muRelaxedIdNoSIP)
+        self.out.fillBranch("Muon_ZZFullSelNoSIP{}".format(self.var_tag), muFullSelNoSIP)
+        self.out.fillBranch("Muon_fsrPhotonIdx{}".format(self.var_tag), muFsrPhotonIdx)
+        self.out.fillBranch("Muon_pfRelIso03FsrCorr{}".format(self.var_tag), mu_isoFsrCorr)
+        self.out.fillBranch("Muon_passIso{}".format(self.var_tag), mu_passIso)
 
         return True

@@ -5,6 +5,21 @@
 # - nanoAOD version (9, ecc)
 ##
 
+def lepPt(l, var):
+    # variations only available for electrons in Run3
+    if abs(l.pdgId) != 11 or var == "nominal":
+        return l.pt
+    elif var == "smearUp":
+        return l.smearUp_pt
+    elif var == "smearDn":
+        return l.smearDn_pt
+    elif var == "scaleUp":
+        return l.scaleUp_pt
+    elif var == "scaleDn":
+        return l.scaleDn_pt
+    else:
+        raise RuntimeError("{} is not a recognized lepPt variation".format(var))
+
 def getEleBDTCut(era, dataTag, nanoVersion) :
     # nanoAODv9 includes mvaFall17V2Iso = 2017 WP and training (ElectronMVAEstimatorRun2Fall17IsoV2Values)
 
@@ -31,13 +46,13 @@ def getEleBDTCut(era, dataTag, nanoVersion) :
                                      (fSCeta>=1.479                and BDT > -0.5532483665)))
 
 
-    def eleBDTCut_RunIII_ULTraining(ele) :
+    def eleBDTCut_RunIII_ULTraining(ele, var) :
         fSCeta = abs(ele.eta + ele.deltaEtaSC)
         BDT = ele.mvaHZZIso #In Run3 samples: 2018 UL tuning (ElectronMVAEstimatorRun2Summer18ULIdIsoValues)
-        return (ele.pt<=10. and     ((fSCeta<0.8                   and BDT > 0.9044286167) or \
+        return (lepPt(ele, var)<=10. and     ((fSCeta<0.8                   and BDT > 0.9044286167) or \
                                      (fSCeta>=0.8 and fSCeta<1.479 and BDT > 0.9094166886) or \
                                      (fSCeta>=1.479                and BDT > 0.9443653660))) \
-                or (ele.pt>10. and  ((fSCeta<0.8                   and BDT > 0.1968600840) or \
+                or (lepPt(ele, var)>10. and  ((fSCeta<0.8                   and BDT > 0.1968600840) or \
                                      (fSCeta>=0.8 and fSCeta<1.479 and BDT > 0.0759172100) or \
                                      (fSCeta>=1.479                and BDT > -0.5169136775)))
 

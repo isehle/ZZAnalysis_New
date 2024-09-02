@@ -20,7 +20,7 @@ from ZZAnalysis.NanoAnalysis.weightFiller import weightFiller
 ### Get processing customizations, if defined in the including .py; use defaults otherwise 
 DEBUG = getConf("DEBUG", False)
 SAMPLENAME = getConf("SAMPLENAME", "test")
-LEPTON_SETUP = getConf("LEPTON_SETUP", 2018)
+LEPTON_SETUP = getConf("LEPTON_SETUP", 2022)
 DATA_TAG = getConf("DATA_TAG", "" ) # used to distinguish different subperiods/reprocessings.
                                     # Specific values currently recognized (other values->use defaults for era)
                                     # "UL" (used by muonScaleResProducer, getEleBDTCut)
@@ -34,13 +34,15 @@ IsMC = getConf("IsMC", True)
 PD = getConf("PD", "")
 XSEC = getConf("XSEC", 1.)
 SYNCMODE = getConf("SYNCMODE", False)
-runMELA = getConf("runMELA", True)
-bestCandByMELA = getConf("bestCandByMELA", True) # requires also runMELA=True
+runMELA = getConf("runMELA", False)
+bestCandByMELA = getConf("bestCandByMELA", False) # requires also runMELA=True
 TRIGPASSTHROUGH = getConf("TRIGPASSTHROUGH", False) # Do not filter events that do not pass triggers (HLT_passZZ4l records if they did)
 PROCESS_CR = getConf("PROCESS_CR", False) # fill control regions
 PROCESS_ZL = getConf("PROCESS_ZL", False) # fill ZL control region
 APPLYMUCORR = getConf("APPLYMUCORR", True) # apply muon momentum scale/resolution corrections
 APPLYELECORR = getConf("APPLYELECORR", True) # apply electron momentum scale/resolution corrections
+# Run ZZFiller over scale/smear up/down variations
+RUNVARS = getConf("RUNVARS", False)
 # ggH NNLOPS weight
 APPLY_QCD_GGF_UNCERT = getConf("APPLY_QCD_GGF_UNCERT", False) 
 # K factors for ggZZ (and old NLO ggH samples) 0:None; 1: NNLO/LO; 2: NNLO/NLO; 3: NLO/LO
@@ -53,6 +55,21 @@ ADD_ALLEVENTS = getConf("ADD_ALLEVENTS", False)
 FILTER_EVENTS = getConf("FILTER_EVENTS", 'Cands') # Filter to be applied to filter events to be applied on output. Currently supported:
                                                   # 'Cands' = any event with a SR or CR candidate (default)
                                                   # '3L_20_10' = any event with  with 3 good leptons, pt1>20, pt2>10 (useful for trigger studies)
+
+def lepPt(l, var):
+    # variations only available for electrons in Run3
+    if abs(l.pdgId) != 11 or var == "nominal":
+        return l.pt
+    elif var == "smearUp":
+        return l.smearUp_pt
+    elif var == "smearDn":
+        return l.smearDn_pt
+    elif var == "scaleUp":
+        return l.scaleUp_pt
+    elif var == "scaleDn":
+        return l.scaleDn_pt
+    else:
+        raise RuntimeError("{} is not a recognized lepPt variation".format(var))
 
 ### Definition of analysis cuts
 cuts = dict(
@@ -68,31 +85,31 @@ cuts = dict(
     
     ## Relaxed ID without SIP (starting point for SIP-less CR)
     # Notes: Muon.nStations is numberOfMatchedStation, not numberOfMatches; also, muonBestTrackType!=2 is not available in nanoAODs
-    muRelaxedIdNoSIP = (lambda l : (l.pt > cuts["muPt"] 
+    muRelaxedIdNoSIP = (lambda l, var : (lepPt(l, var) > cuts["muPt"] 
                                     and abs(l.eta) < 2.4
                                     and abs(l.dxy) < cuts["dxy"]
                                     and abs(l.dz) < cuts["dz"]
                                     and (l.isGlobal or (l.isTracker and l.nStations>0)))),
-    eleRelaxedIdNoSIP = (lambda l : (l.pt > cuts["elePt"]
+    eleRelaxedIdNoSIP = (lambda l, var : (lepPt(l, var) > cuts["elePt"]
                                      and abs(l.eta) < 2.5
                                      and abs(l.dxy) < cuts["dxy"]
                                      and abs(l.dz) < cuts["dz"])),
 
     passEleBDT = getEleBDTCut(LEPTON_SETUP, DATA_TAG, NANOVERSION),
 
-    passMuID = (lambda l: (l.isPFcand or (l.highPtId>0 and l.pt>200.))),
+    passMuID = (lambda l, var: (l.isPFcand or (l.highPtId>0 and lepPt(l, var)>200.))),
 
     # Relaxed IDs used for CRs for fake rate method
-    muRelaxedId  = (lambda l : cuts["muRelaxedIdNoSIP"](l) and abs(l.sip3d) < cuts["sip3d"]),
-    eleRelaxedId = (lambda l : cuts["eleRelaxedIdNoSIP"](l) and abs(l.sip3d) < cuts["sip3d"]),
+    muRelaxedId  = (lambda l, var : cuts["muRelaxedIdNoSIP"](l, var) and abs(l.sip3d) < cuts["sip3d"]),
+    eleRelaxedId = (lambda l, var : cuts["eleRelaxedIdNoSIP"](l, var) and abs(l.sip3d) < cuts["sip3d"]),
 
     # Full ID except for SIP (without isolation: FSR-corrected iso has to be applied on top, for muons)
-    muFullIdNoSIP  = (lambda l, era : cuts["muRelaxedIdNoSIP"](l) and (l.isPFcand or (l.highPtId>0 and l.pt>200.))),
-    eleFullIdNoSIP = (lambda l, era : cuts["eleRelaxedIdNoSIP"](l) and cuts["passEleBDT"](l)),
+    muFullIdNoSIP  = (lambda l, era, var : cuts["muRelaxedIdNoSIP"](l, var) and (l.isPFcand or (l.highPtId>0 and lepPt(l, var)>200.))),
+    eleFullIdNoSIP = (lambda l, era, var : cuts["eleRelaxedIdNoSIP"](l, var) and cuts["passEleBDT"](l, var)),
 
     # Full ID (without isolation: FSR-corrected iso has to be applied on top, for muons)
-    muFullId  = (lambda l, era : cuts["muRelaxedId"](l) and (l.isPFcand or (l.highPtId>0 and l.pt>200.))),
-    eleFullId = (lambda l, era : cuts["eleRelaxedId"](l) and cuts["passEleBDT"](l)),
+    muFullId  = (lambda l, era, var : cuts["muRelaxedId"](l, var) and (l.isPFcand or (l.highPtId>0 and lepPt(l, var)>200.))),
+    eleFullId = (lambda l, era, var : cuts["eleRelaxedId"](l, var) and cuts["passEleBDT"](l, var)),
     )
 
 ### Preselection to speed up processing.
@@ -135,10 +152,10 @@ reco_sequence = [lepFiller(cuts, LEPTON_SETUP), # FSR and FSR-corrected iso; fla
                  ZZFiller(runMELA, bestCandByMELA,
                           isMC=IsMC,
                           year=LEPTON_SETUP,
-                          data_tag=DATA_TAG,
                           processCR=PROCESS_CR,
+                          data_tag=DATA_TAG,
+                          runVariations=RUNVARS,
                           addZL=PROCESS_ZL,
-                          filter=FILTER_EVENTS,
                           debug=DEBUG), # Build ZZ candidates; choose best candidate; filter events with candidates
                  jetFiller(), # Jets cleaning with leptons
                  ZZExtraFiller(IsMC, LEPTON_SETUP, DATA_TAG, PROCESS_CR), # Additional variables to selected candidates
@@ -231,7 +248,10 @@ branchsel_out = ['drop *',
                  'keep HLT_TripleMu*',
                  'keep HLT_IsoMu*',
                  'keep HLT_passZZ*',
-                 'keep best*', # best candidate indices
+                 #'keep best*', # best candidate indices
+                 'keep SR',
+                 'keep OS*',
+                 'keep SS*',
                  'keep Z*', # Z, ZZ, ZLL candidates
                  'keep MET_pt',
                  #'keep PV*',
@@ -261,20 +281,21 @@ if IsMC:
                               ])
     
 from PhysicsTools.NanoAODTools.postprocessing.framework.postprocessor import PostProcessor
+
 p = PostProcessor(".", fileNames,
-                  prefetch=True, longTermCache=False,
-                  cut=preselection, # pre-selection cuts (to speed up processing)
-                  branchsel=branchsel_in, # select branches to be read
-                  outputbranchsel=branchsel_out, # select branches to be written out
-                  jsonInput=jsonFile, # path of json file for data
-                  modules=ZZSequence,
-                  noOut=False, # True = do not write out skimmed nanoAOD file
-                  haddFileName="ZZ4lAnalysis.root", # name of output nanoAOD file
+                prefetch=True, longTermCache=False,
+                cut=preselection, # pre-selection cuts (to speed up processing)
+                branchsel=branchsel_in, # select branches to be read
+                outputbranchsel=branchsel_out, # select branches to be written out
+                jsonInput=jsonFile, # path of json file for data
+                modules=ZZSequence,
+                noOut=False, # True = do not write out skimmed nanoAOD file
+                haddFileName="ZZ4lAnalysis.root", # name of output nanoAOD file
 #                  histFileName="histos.root", histDirName="plots", # file containing histograms
-                  maxEntries=0, # Number of events to be read
-                  firstEntry=0, # First event to be read
-                  provenance = False
-                  ) 
+                maxEntries=0, # Number of events to be read
+                firstEntry=0, # First event to be read
+                provenance = False
+                ) 
 
 # Print sequence to be run:
 print("Sequence to be run:")
