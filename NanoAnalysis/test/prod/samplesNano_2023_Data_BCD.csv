@@ -1,0 +1,42 @@
+identifier,process,crossSection=-1,BR=1,execute=True,dataset,prefix,pattern,splitLevel,::variables,::pyFragments,comment
+###,,,,,,,,,,,All 2023 B-D : 29.504/fb (recorded)
+###,,,,,,,,,,,
+###,,,,,,,,,,,Run2032B -v1 runs 366365-367079
+Muon02023B,,-1,,,/Muon0/Run2023B-22Sep2023-v1/NANOAOD,dbs,root://cms-xrd-global.cern.ch/,2,DATA_TAG=PromptReco;PD=Muon;PROCESS_CR=True;ADDLOOSEELE=False;LEPTON_SETUP=2023;ADDZTREE=False,RecoProbabilities.py,
+Muon12023B,,-1,,,/Muon1/Run2023B-22Sep2023-v1/NANOAOD,dbs,root://cms-xrd-global.cern.ch/,2,DATA_TAG=PromptReco;PD=Muon;PROCESS_CR=True;ADDLOOSEELE=False;LEPTON_SETUP=2023;ADDZTREE=False,RecoProbabilities.py,
+MuonEG2023B,,-1,,,/MuonEG/Run2023B-22Sep2023-v1/NANOAOD,dbs,root://cms-xrd-global.cern.ch/,2,DATA_TAG=PromptReco;PD=MuEG;PROCESS_CR=True;ADDLOOSEELE=False;LEPTON_SETUP=2023;ADDZTREE=False,RecoProbabilities.py,
+EGamma02023B,,-1,,,/EGamma0/Run2023B-22Sep2023-v1/NANOAOD,dbs,root://cms-xrd-global.cern.ch/,2,DATA_TAG=PromptReco;PD=EGamma;PROCESS_CR=True;ADDLOOSEELE=False;LEPTON_SETUP=2023;ADDZTREE=False,RecoProbabilities.py,
+EGamma12023B,,-1,,,/EGamma1/Run2023B-22Sep2023-v1/NANOAOD,dbs,root://cms-xrd-global.cern.ch/,2,DATA_TAG=PromptReco;PD=EGamma;PROCESS_CR=True;ADDLOOSEELE=False;LEPTON_SETUP=2023;ADDZTREE=False,RecoProbabilities.py,
+###,,,,, Run2023C -v1 367080 - 367515 | Run2023C -v2 367516 - 367620 | Run2023C -v3 367621 - 367763 | Run2023C -v4 367765 - 369802
+Muon02023C,,-1,,,/Muon0/Run2023C-22Sep2023_v1-v1/NANOAOD,dbs,root://cms-xrd-global.cern.ch/,2,DATA_TAG=PromptReco;PD=Muon;PROCESS_CR=True;ADDLOOSEELE=False;LEPTON_SETUP=2023;ADDZTREE=False,RecoProbabilities.py,
+###Muon02023Cv2
+###Muon02023Cv3
+###Muon02023Cv4
+Muon12023C,,-1,,,/Muon1/Run2023C-22Sep2023_v1-v1/NANOAOD,dbs,root://cms-xrd-global.cern.ch/,2,DATA_TAG=PromptReco;PD=Muon;PROCESS_CR=True;ADDLOOSEELE=False;LEPTON_SETUP=2023;ADDZTREE=False,RecoProbabilities.py,
+###Muon12023Cv2
+###Muon12023Cv3
+###Muon12023Cv4
+MuonEG2023,,-1,,,/MuonEG/Run2023C-22Sep2023_v1-v1/NANOAOD,dbs,root://cms-xrd-global.cern.ch/,2,DATA_TAG=PromptReco;PD=MuEG;PROCESS_CR=True;ADDLOOSEELE=False;LEPTON_SETUP=2023;ADDZTREE=False,RecoProbabilities.py,
+###MuonEG2023v2
+###MuonEG2023v3
+###MuonEG2023v4
+EGamma02023C,,-1,,,/EGamma0/Run2023C-22Sep2023_v1-v1/NANOAOD,dbs,root://cms-xrd-global.cern.ch/,2,DATA_TAG=PromptReco;PD=EGamma;PROCESS_CR=True;ADDLOOSEELE=False;LEPTON_SETUP=2023;ADDZTREE=False,RecoProbabilities.py,
+###EGamma02023Cv2
+###EGamma02023Cv3
+###EGamma02023Cv4
+EGamma12023C,,-1,,,/EGamma1/Run2023C-22Sep2023_v1-v1/NANOAOD ,dbs,root://cms-xrd-global.cern.ch/,2,DATA_TAG=PromptReco;PD=EGamma;PROCESS_CR=True;ADDLOOSEELE=False;LEPTON_SETUP=2023;ADDZTREE=False,RecoProbabilities.py,
+###EGamma02023Cv2
+###EGamma02023Cv3
+###EGamma02023Cv4
+###,,,,,,,,,,, Run2023D -v1 369803 - 370602 |Run2023D -v2 370603 - 372415
+Muon02023D,,-1,,,/Muon0/Run2023D-22Sep2023_v1-v1/NANOAOD,dbs,root://cms-xrd-global.cern.ch/,2,DATA_TAG=PromptReco;PD=Muon;PROCESS_CR=True;ADDLOOSEELE=False;LEPTON_SETUP=2023;ADDZTREE=False,RecoProbabilities.py,
+###Muon02023Dv2
+Muon12023D,,-1,,,/Muon1/Run2023D-22Sep2023_v1-v1/NANOAOD,dbs,root://cms-xrd-global.cern.ch/,2,DATA_TAG=PromptReco;PD=Muon;PROCESS_CR=True;ADDLOOSEELE=False;LEPTON_SETUP=2023;ADDZTREE=False,RecoProbabilities.py,
+###Muon12023Dv2
+MuonEG2023D,,-1,,,/MuonEG/Run2023D-22Sep2023_v1-v1/NANOAOD,dbs,root://cms-xrd-global.cern.ch/,2,DATA_TAG=PromptReco;PD=MuEG;PROCESS_CR=True;ADDLOOSEELE=False;LEPTON_SETUP=2023;ADDZTREE=False,RecoProbabilities.py,
+###MuonEG2023Dv2
+EGamma02023D,,-1,,,/EGamma0/Run2023D-22Sep2023_v1-v1/NANOAOD,dbs,root://cms-xrd-global.cern.ch/,2,DATA_TAG=PromptReco;PD=EGamma;PROCESS_CR=True;ADDLOOSEELE=False;LEPTON_SETUP=2023;ADDZTREE=False,RecoProbabilities.py,
+###EGamma02023Dv2
+EGamma12023D,,-1,,,/EGamma1/Run2023D-22Sep2023_v1-v1/NANOAOD,dbs,root://cms-xrd-global.cern.ch/,2,DATA_TAG=PromptReco;PD=EGamma;PROCESS_CR=True;ADDLOOSEELE=False;LEPTON_SETUP=2023;ADDZTREE=False,RecoProbabilities.py,
+###EGamma12023Dv2
+###,,,,,,,,,,,

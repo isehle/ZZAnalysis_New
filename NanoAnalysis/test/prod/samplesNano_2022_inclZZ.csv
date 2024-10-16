@@ -1,0 +1,32 @@
+identifier,process,crossSection=-1,BR=1,execute=True,dataset,prefix,pattern,splitLevel,::variables,::pyFragments,comment
+###,,,,,,,,,,,xsec for H125 samples is taken from this ad interim prescription: https://twiki.cern.ch/twiki/bin/view/LHCPhysics/LHCHWG136TeVxsec_extrap
+###,,,,,,,,,,,for the other mass points the xsec is scaled from 13 TeV to 13.6 TeV following this prescription: xsec_13p6 = xsec_13 * 0.4 + xsec_14 * 0.6 https://indico.cern.ch/event/1169286/contributions/5126668/attachments/2557560/4416316/HXSWG.pdf#page=5
+###,,,,,,,,,,,MC situation evolving here https://docs.google.com/spreadsheets/d/1StPLK3iVXZMx694qgEkl8QrZutFszvqT6ecN-MFZZKY/edit#gid=0
+
+###,,,,,,,,,,,qq->ZZ signal - xsec taken from powheg gridpack, BR = (n_lep)^2*BR(Z-->2l)^2 w/ n_lep = 3 and BR(Z-->2l) from the PDG https://pdg.lbl.gov/2023/tables/contents_tables.html
+ZZTo4l,,1.39,,,/ZZto4L_TuneCP5_13p6TeV_powheg-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v2/NANOAODSIM,dbs,root://cms-xrd-global.cern.ch/,1,GENXSEC=1.39;GENBR=1;PROCESS_CR=True;APPLY_K_NNLOQCD_ZZQQB=True;APPLY_K_NLOEW_ZZQQB=True;LEPTON_SETUP=2022,RecoProbabilities.py,
+
+###,,,,,,,,,,,gg->ZZ signal - Xsec using https://twiki.cern.ch/twiki/bin/viewauth/CMS/HowToGenXSecAnalyzer
+ggTo4e     ,,0.00305851,,,/GluGlutoContinto2Zto4E_TuneCP5_13p6TeV_mcfm-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v2/NANOAODSIM        ,dbs,root://cms-xrd-global.cern.ch/,1,GENXSEC=0.00158549;GENBR=1;PROCESS_CR=False;APPLY_K_NNLOQCD_ZZGG=1;LEPTON_SETUP=2022,RecoProbabilities.py;LHEProbabilities_GG_BKG_MCFM.py,
+ggTo4mu    ,,0.00303575,,,/GluGlutoContinto2Zto4Mu_TuneCP5_13p6TeV_mcfm-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v2/NANOAODSIM       ,dbs,root://cms-xrd-global.cern.ch/,1,GENXSEC=0.00158549;GENBR=1;PROCESS_CR=False;APPLY_K_NNLOQCD_ZZGG=1;LEPTON_SETUP=2022,RecoProbabilities.py;LHEProbabilities_GG_BKG_MCFM.py,
+ggTo4tau   ,,0.00303575,,,/GluGlutoContinto2Zto4Tau_TuneCP5_13p6TeV_mcfm-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v2/NANOAODSIM      ,dbs,root://cms-xrd-global.cern.ch/,1,GENXSEC=0.00158549;GENBR=1;PROCESS_CR=False;APPLY_K_NNLOQCD_ZZGG=1;LEPTON_SETUP=2022,RecoProbabilities.py;LHEProbabilities_GG_BKG_MCFM.py,
+ggTo2e2mu  ,,0.00624157,,,/GluGlutoContinto2Zto2E2Mu_TuneCP5_13p6TeV_mcfm701-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v1/NANOAODSIM  ,dbs,root://cms-xrd-global.cern.ch/,1,GENXSEC=0.00319142;GENBR=1;PROCESS_CR=False;APPLY_K_NNLOQCD_ZZGG=1;LEPTON_SETUP=2022,RecoProbabilities.py;LHEProbabilities_GG_BKG_MCFM.py,
+ggTo2e2tau ,,0.00624157,,,/GluGlutoContinto2Zto2E2Tau_TuneCP5_13p6TeV_mcfm701-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v1/NANOAODSIM ,dbs,root://cms-xrd-global.cern.ch/,1,GENXSEC=0.00319142;GENBR=1;PROCESS_CR=False;APPLY_K_NNLOQCD_ZZGG=1;LEPTON_SETUP=2022,RecoProbabilities.py;LHEProbabilities_GG_BKG_MCFM.py,
+ggTo2mu2tau,,0.00624157,,,/GluGlutoContinto2Zto2Mu2Tau_TuneCP5_13p6TeV_mcfm701-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v1/NANOAODSIM,dbs,root://cms-xrd-global.cern.ch/,1,GENXSEC=0.00319142;GENBR=1;PROCESS_CR=False;APPLY_K_NNLOQCD_ZZGG=1;LEPTON_SETUP=2022,RecoProbabilities.py;LHEProbabilities_GG_BKG_MCFM.py,
+
+###,,,,,,,,,,,DY
+DYJetsToLL,,5558.0,,,/DYJetsToLL_M-50_TuneCP5_13p6TeV-madgraphMLM-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v2/NANOAODSIM,dbs,root://cms-xrd-global.cern.ch/,1,GENXSEC=1.;GENBR=1.;PROCESS_CR=True;PROCESS_ZL=True;LEPTON_SETUP=2022,RecoProbabilities.py,xsec from XSDB  
+
+###,,,,,,,,,,,TT
+TTto2L2Nu,,762.1,,,/TTto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v2/NANOAODSIM,dbs,root://cms-xrd-global.cern.ch/,1,GENXSEC=1.;GENBR=1.;PROCESS_CR=True;PROCESS_ZL=True;LEPTON_SETUP=2022,RecoProbabilities.py,xsec from XSDB
+
+###,,,,,,,,,,,WZto3LNu
+WZto3LNu,,4.924,,,/WZto3LNu_TuneCP5_13p6TeV_powheg-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v2/NANOAODSIM,dbs,root://cms-xrd-global.cern.ch/,1,GENXSEC=1.;GENBR=1.;PROCESS_CR=True;PROCESS_ZL=True;LEPTON_SETUP=2022,RecoProbabilities.py,#xsec from gridpack
+
+###,,,,,,,,,,,H
+ggH125  ,,52.23,0.0002745,,/GluGluHtoZZto4L_M-125_TuneCP5_13p6TeV_powheg2-JHUGenV752-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v2/NANOAODSIM  ,dbs,root://cms-xrd-global.cern.ch/,1,GENXSEC=1.;GENBR=1.;ADDLHEKINEMATICS=True;VVMODE=1;VVDECAYMODE=0;APPLY_QCD_GGF_UNCERT=True;LEPTON_SETUP=2022;ADD_ALLEVENTS=True,RecoProbabilities.py,
+
+###,,,,,,,,,,,VVV
+WWZ,,0.1851,,,/WWZ_4F_TuneCP5_13p6TeV_amcatnlo-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v2/NANOAODSIM,dbs,root://cms-xrd-global.cern.ch/,1,GENXSEC=1.;GENBR=1.;PROCESS_CR=True;LEPTON_SETUP=2022,RecoProbabilities.py,xsec from XSDB 
+WZZ,,0.0621,,,/WZZ_TuneCP5_13p6TeV_amcatnlo-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v2/NANOAODSIM,dbs,root://cms-xrd-global.cern.ch/,1,GENXSEC=1.;GENBR=1.;PROCESS_CR=True;LEPTON_SETUP=2022,RecoProbabilities.py,xsec from XSDB
+ZZZ,,0.0159,,,/ZZZ_TuneCP5_13p6TeV_amcatnlo-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v2/NANOAODSIM,dbs,root://cms-xrd-global.cern.ch/,1,GENXSEC=1.;GENBR=1.;PROCESS_CR=True;LEPTON_SETUP=2022,RecoProbabilities.py,xsec from XSDB
